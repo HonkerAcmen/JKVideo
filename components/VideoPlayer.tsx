@@ -1,6 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { View, StyleSheet, Text, Platform, Modal, StatusBar, useWindowDimensions } from 'react-native';
-import * as ScreenOrientation from 'expo-screen-orientation';
+// expo-screen-orientation requires a dev build; gracefully degrade in Expo Go
+let ScreenOrientation: typeof import('expo-screen-orientation') | null = null;
+try { ScreenOrientation = require('expo-screen-orientation'); } catch {}
 import { NativeVideoPlayer } from './NativeVideoPlayer';
 import type { PlayUrlResponse, DanmakuItem } from '../services/types';
 
@@ -25,19 +27,19 @@ export function VideoPlayer({ playData, qualities, currentQn, onQualityChange, o
   const handleEnterFullscreen = async () => {
     setFullscreen(true);
     if (Platform.OS !== 'web')
-      await ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE_RIGHT);
+      await ScreenOrientation?.lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE_RIGHT);
   };
 
   const handleExitFullscreen = async () => {
     setFullscreen(false);
     if (Platform.OS !== 'web')
-      await ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP);
+      await ScreenOrientation?.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP);
   };
 
   useEffect(() => {
     return () => {
       if (Platform.OS !== 'web')
-        ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP);
+        ScreenOrientation?.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP);
     };
   }, []);
 
