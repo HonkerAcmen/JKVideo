@@ -20,6 +20,10 @@ export interface VideoItem {
   desc: string;
   cid?: number;
   pages?: Array<{ cid: number; part: string }>;
+  goto?: 'av' | 'live';
+  roomid?: number;
+  online?: number;
+  area_name?: string;
 }
 
 export interface Comment {
@@ -97,4 +101,16 @@ export interface DanmakuItem {
   fontSize: number;
   color: number;      // 0xRRGGBB 十进制整数
   text: string;
+}
+
+export interface LiveRoom {
+  roomid: number;
+  uid: number;
+  title: string;
+  uname: string;
+  face: string;
+  cover: string;
+  online: number;
+  area_name: string;
+  parent_area_name: string;
 }

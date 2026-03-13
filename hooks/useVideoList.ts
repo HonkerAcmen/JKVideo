@@ -1,9 +1,9 @@
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useMemo } from 'react';
 import { getRecommendFeed } from '../services/bilibili';
 import type { VideoItem } from '../services/types';
 
 export function useVideoList() {
-  const [videos, setVideos] = useState<VideoItem[]>([]);
+  const [pages, setPages] = useState<VideoItem[][]>([]);
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
 
@@ -18,7 +18,7 @@ export function useVideoList() {
     setLoading(true);
     try {
       const data = await getRecommendFeed(idx);
-      setVideos(prev => reset ? data : [...prev, ...data]);
+      setPages(prev => reset ? [data] : [...prev, data]);
       freshIdxRef.current = idx + 1;
     } catch (e) {
       console.error('Failed to load videos', e);
@@ -34,5 +34,7 @@ export function useVideoList() {
     load(true);
   }, [load]);
 
-  return { videos, loading, refreshing, load, refresh };
+  const videos = useMemo(() => pages.flat(), [pages]);
+
+  return { videos, pages, loading, refreshing, load, refresh };
 }

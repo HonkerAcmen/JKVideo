@@ -1,5 +1,5 @@
 // components/BigVideoCard.tsx
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState, useCallback } from "react";
 import {
   View,
   Text,
@@ -8,13 +8,15 @@ import {
   StyleSheet,
   useWindowDimensions,
   Animated,
+  PanResponder,
 } from "react-native";
-import Video from "react-native-video";
+import Video, { VideoRef } from "react-native-video";
 import { Ionicons } from "@expo/vector-icons";
 import { buildDashMpdUri } from "../utils/dash";
 import { getPlayUrl, getVideoDetail } from "../services/bilibili";
 import { proxyImageUrl } from "../utils/imageUrl";
 import { formatCount, formatDuration } from "../utils/format";
+import { LivePulse } from "./LivePulse";
 import type { VideoItem } from "../services/types";
 
 const HEADERS = {
@@ -22,6 +24,16 @@ const HEADERS = {
   "User-Agent":
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
 };
+
+const BAR_H = 3;
+// Minimum horizontal distance (px) before treating the gesture as a seek
+const SWIPE_THRESHOLD = 8;
+// Full swipe across the screen = seek this many seconds
+const SWIPE_SECONDS = 90;
+
+function clamp(v: number, lo: number, hi: number) {
+  return Math.max(lo, Math.min(hi, v));
+}
 
 interface Props {
   item: VideoItem;
@@ -40,22 +52,38 @@ export function BigVideoCard({ item, isVisible, onPress }: Props) {
   const [muted, setMuted] = useState(true);
   const thumbOpacity = useRef(new Animated.Value(1)).current;
 
+  const videoRef = useRef<VideoRef>(null);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [duration, setDuration] = useState(0);
+  const [buffered, setBuffered] = useState(0);
+
+  // Refs for PanResponder (avoid stale closures)
+  const currentTimeRef = useRef(0);
+  const durationRef = useRef(0);
+  const seekingRef = useRef(false);
+  const [seekLabel, setSeekLabel] = useState<string | null>(null);
+
   // Reset video state when the item changes
   useEffect(() => {
     setVideoUrl(undefined);
     setIsDash(false);
     setPaused(true);
     setMuted(true);
+    setCurrentTime(0);
+    setDuration(0);
+    setBuffered(0);
     thumbOpacity.setValue(1);
   }, [item.bvid]);
 
+  const isLive = item.goto === 'live';
+
   // Fetch play URL when visible for the first time
   useEffect(() => {
+    if (isLive) return;
     if (!isVisible || videoUrl) return;
     let cancelled = false;
     (async () => {
       try {
-        // cid may be missing from feed items; fetch detail if needed
         let cid = item.cid;
         if (!cid) {
           const detail = await getVideoDetail(item.bvid);
@@ -82,7 +110,6 @@ export function BigVideoCard({ item, isVisible, onPress }: Props) {
     return () => {
       cancelled = true;
     };
-    // videoUrl intentionally excluded — re-fetch guard prevents redundant fetches after URL is set
   }, [isVisible, item.bvid]);
 
   // Pause/resume when visibility changes
@@ -91,7 +118,6 @@ export function BigVideoCard({ item, isVisible, onPress }: Props) {
     setPaused(!isVisible);
     if (!isVisible) {
       setMuted(true);
-      // Restore thumbnail when leaving viewport
       Animated.timing(thumbOpacity, {
         toValue: 1,
         duration: 150,
@@ -110,6 +136,50 @@ export function BigVideoCard({ item, isVisible, onPress }: Props) {
     }).start();
   };
 
+  // Keep refs in sync
+  useEffect(() => {
+    currentTimeRef.current = currentTime;
+  }, [currentTime]);
+  useEffect(() => {
+    durationRef.current = duration;
+  }, [duration]);
+
+  // Horizontal swipe to seek
+  const swipeStartTime = useRef(0);
+  const panResponder = useRef(
+    PanResponder.create({
+      onMoveShouldSetPanResponder: (_, gs) =>
+        Math.abs(gs.dx) > SWIPE_THRESHOLD && Math.abs(gs.dx) > Math.abs(gs.dy),
+      onPanResponderGrant: () => {
+        seekingRef.current = true;
+        swipeStartTime.current = currentTimeRef.current;
+      },
+      onPanResponderMove: (_, gs) => {
+        if (durationRef.current <= 0) return;
+        const delta = (gs.dx / SCREEN_W) * SWIPE_SECONDS;
+        const target = clamp(swipeStartTime.current + delta, 0, durationRef.current);
+        setSeekLabel(formatDuration(Math.floor(target)));
+      },
+      onPanResponderRelease: (_, gs) => {
+        if (durationRef.current > 0) {
+          const delta = (gs.dx / SCREEN_W) * SWIPE_SECONDS;
+          const target = clamp(swipeStartTime.current + delta, 0, durationRef.current);
+          videoRef.current?.seek(target);
+          setCurrentTime(target);
+        }
+        seekingRef.current = false;
+        setSeekLabel(null);
+      },
+      onPanResponderTerminate: () => {
+        seekingRef.current = false;
+        setSeekLabel(null);
+      },
+    }),
+  ).current;
+
+  const progressRatio = duration > 0 ? clamp(currentTime / duration, 0, 1) : 0;
+  const bufferedRatio = duration > 0 ? clamp(buffered / duration, 0, 1) : 0;
+
   return (
     <TouchableOpacity style={styles.card} onPress={onPress} activeOpacity={0.9}>
       {/* Media area */}
@@ -117,6 +187,7 @@ export function BigVideoCard({ item, isVisible, onPress }: Props) {
         {/* Video player — rendered first so it sits behind the thumbnail */}
         {videoUrl && (
           <Video
+            ref={videoRef}
             source={
               isDash
                 ? { uri: videoUrl, type: "mpd", headers: HEADERS }
@@ -129,6 +200,11 @@ export function BigVideoCard({ item, isVisible, onPress }: Props) {
             repeat
             controls={false}
             onReadyForDisplay={handleVideoReady}
+            onProgress={({ currentTime: ct, seekableDuration: dur, playableDuration: buf }) => {
+              if (!seekingRef.current) setCurrentTime(ct);
+              if (dur > 0) setDuration(dur);
+              setBuffered(buf);
+            }}
           />
         )}
 
@@ -144,19 +220,41 @@ export function BigVideoCard({ item, isVisible, onPress }: Props) {
           />
         </Animated.View>
 
+        {/* Swipe gesture layer (video only) */}
+        {!isLive && (
+          <View style={StyleSheet.absoluteFill} {...panResponder.panHandlers} />
+        )}
+
+        {/* Seek time label */}
+        {seekLabel && (
+          <View style={styles.seekBadge}>
+            <Text style={styles.seekText}>{seekLabel}</Text>
+          </View>
+        )}
+
+        {/* Live badge */}
+        {isLive && (
+          <View style={styles.liveBadge}>
+            <LivePulse />
+            <Text style={styles.liveBadgeText}>直播中</Text>
+          </View>
+        )}
+
         <View style={styles.meta}>
-          <Ionicons name="play" size={11} color="#fff" />
+          <Ionicons name={isLive ? "people" : "play"} size={11} color="#fff" />
           <Text style={styles.metaText}>
-            {formatCount(item.stat?.view ?? 0)}
+            {formatCount(isLive ? (item.online ?? 0) : (item.stat?.view ?? 0))}
           </Text>
         </View>
 
-        {/* Duration badge on thumbnail */}
-        <View style={styles.durationBadge}>
-          <Text style={styles.durationText}>
-            {formatDuration(item.duration)}
-          </Text>
-        </View>
+        {/* Duration badge on thumbnail (video only) */}
+        {!isLive && (
+          <View style={styles.durationBadge}>
+            <Text style={styles.durationText}>
+              {formatDuration(item.duration)}
+            </Text>
+          </View>
+        )}
 
         {/* Mute toggle — visible only when video is playing */}
         {videoUrl && !paused && (
@@ -173,6 +271,24 @@ export function BigVideoCard({ item, isVisible, onPress }: Props) {
           </TouchableOpacity>
         )}
       </View>
+
+      {/* Progress bar between video and info (video only) */}
+      {!isLive && videoUrl && duration > 0 && (
+        <View style={styles.progressTrack}>
+          <View
+            style={[
+              styles.progressLayer,
+              { width: `${bufferedRatio * 100}%` as any, backgroundColor: "rgba(0,174,236,0.25)" },
+            ]}
+          />
+          <View
+            style={[
+              styles.progressLayer,
+              { width: `${progressRatio * 100}%` as any, backgroundColor: "#00AEEC" },
+            ]}
+          />
+        </View>
+      )}
 
       {/* Info */}
       <View style={styles.info}>
@@ -196,6 +312,20 @@ const styles = StyleSheet.create({
     borderRadius: 6,
     overflow: "hidden",
   },
+  liveBadge: {
+    position: "absolute",
+    top: 8,
+    left: 8,
+    backgroundColor: "rgba(0,0,0,0.6)",
+    borderRadius: 5,
+    paddingHorizontal: 5,
+    paddingVertical: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 2,
+    zIndex: 2,
+  },
+  liveBadgeText: { color: "#fff", fontSize: 10, fontWeight: "400" },
   durationBadge: {
     position: "absolute",
     bottom: 4,
@@ -218,6 +348,28 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     zIndex: 3,
+  },
+  seekBadge: {
+    position: "absolute",
+    top: "40%",
+    alignSelf: "center",
+    backgroundColor: "rgba(0,0,0,0.6)",
+    borderRadius: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    zIndex: 4,
+  },
+  seekText: { color: "#fff", fontSize: 16, fontWeight: "600" },
+  progressTrack: {
+    height: BAR_H,
+    backgroundColor: "rgba(0,0,0,0.08)",
+    position: "relative",
+  },
+  progressLayer: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    height: BAR_H,
   },
   info: { padding: 8 },
   title: { fontSize: 14, color: "#212121", lineHeight: 18, marginBottom: 4 },

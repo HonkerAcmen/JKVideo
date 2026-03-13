@@ -17,7 +17,17 @@ export default function RootLayout() {
     <SafeAreaProvider>
       <StatusBar style="dark" />
       <View style={{ flex: 1 }}>
-        <Stack screenOptions={{ headerShown: false }} />
+        <Stack screenOptions={{ headerShown: false }}>
+          <Stack.Screen name="index" />
+          <Stack.Screen
+            name="video"
+            options={{
+              animation: "slide_from_right",
+              gestureEnabled: true,
+              gestureDirection: "horizontal",
+            }}
+          />
+        </Stack>
         <MiniPlayer />
       </View>
     </SafeAreaProvider>

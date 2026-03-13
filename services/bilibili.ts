@@ -2,7 +2,7 @@ import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
 import pako from 'pako';
-import type { VideoItem, Comment, PlayUrlResponse, QRCodeInfo, VideoShotData, DanmakuItem } from './types';
+import type { VideoItem, Comment, PlayUrlResponse, QRCodeInfo, VideoShotData, DanmakuItem, LiveRoom } from './types';
 import { signWbi } from '../utils/wbi';
 import { parseDanmakuXml } from '../utils/danmaku';
 
@@ -83,12 +83,39 @@ export async function getRecommendFeed(freshIdx = 0): Promise<VideoItem[]> {
   const res = await api.get('/x/web-interface/wbi/index/top/feed/rcmd', { params: signed });
   const items: any[] = res.data.data?.item ?? [];
   return items
-    .map(item => ({
-      ...item,
-      aid: item.id ?? item.aid,
-      pic: item.pic ?? item.cover,
-      owner: item.owner ?? { mid: 0, name: item.owner_info?.name ?? '', face: item.owner_info?.face ?? '' },
-    })) as VideoItem[];
+    .filter(item =>
+      (item.goto === 'av' && item.bvid && item.title) ||
+      (item.goto === 'live' && item.title),
+    )
+    .map(item => {
+      if (item.goto === 'live') {
+        const roomid = item.roomid ?? item.room_id ?? 0;
+        return {
+          bvid: `live-${roomid}`,
+          aid: 0,
+          title: item.title,
+          pic: item.pic ?? item.cover ?? '',
+          owner: item.owner ?? {
+            mid: item.owner_info?.mid ?? item.uid ?? 0,
+            name: item.owner_info?.name ?? item.uname ?? '',
+            face: item.owner_info?.face ?? item.face ?? '',
+          },
+          duration: 0,
+          desc: '',
+          stat: null,
+          goto: 'live' as const,
+          roomid,
+          online: item.watched_show?.num ?? item.online ?? 0,
+          area_name: item.area_name ?? '',
+        } as VideoItem;
+      }
+      return {
+        ...item,
+        aid: item.id ?? item.aid,
+        pic: item.pic ?? item.cover,
+        owner: item.owner ?? { mid: 0, name: item.owner_info?.name ?? '', face: item.owner_info?.face ?? '' },
+      } as VideoItem;
+    });
 }
 
 export async function getPopularVideos(pn = 1): Promise<VideoItem[]> {
@@ -165,6 +192,52 @@ export async function pollQRCode(qrcode_key: string): Promise<{ code: number; co
   return { code, cookie };
 }
 
+
+const LIVE_BASE = isWeb ? 'http://localhost:3001/bilibili-live' : 'https://api.live.bilibili.com';
+
+export async function getLiveList(page = 1, parentAreaId = 0): Promise<LiveRoom[]> {
+  if (parentAreaId === 0) {
+    // 推荐：使用原有接口
+    const res = await api.get(`${LIVE_BASE}/xlive/web-interface/v1/webMain/getMoreRecList`, {
+      params: { platform: 'web', page, page_size: 20 },
+    });
+    const list: any[] = res.data.data?.recommend_room_list ?? [];
+    return list.map(item => ({
+      roomid: item.roomid,
+      uid: item.uid,
+      title: item.title,
+      uname: item.uname,
+      face: item.face,
+      cover: item.cover ?? item.user_cover ?? item.keyframe,
+      online: item.online,
+      area_name: item.area_v2_name ?? '',
+      parent_area_name: item.area_v2_parent_name ?? '',
+    }));
+  }
+  // 分区筛选：使用 getRoomList 接口
+  const res = await api.get(`${LIVE_BASE}/room/v1/area/getRoomList`, {
+    params: {
+      parent_area_id: parentAreaId,
+      area_id: 0,
+      page,
+      page_size: 20,
+      sort_type: 'online',
+      platform: 'web',
+    },
+  });
+  const list: any[] = res.data.data ?? [];
+  return list.map(item => ({
+    roomid: item.roomid,
+    uid: item.uid,
+    title: item.title,
+    uname: item.uname,
+    face: item.face,
+    cover: item.cover ?? item.user_cover ?? item.keyframe,
+    online: item.online,
+    area_name: item.area_v2_name ?? item.areaName ?? '',
+    parent_area_name: item.area_v2_parent_name ?? item.parentAreaName ?? '',
+  }));
+}
 
 export async function getDanmaku(cid: number): Promise<DanmakuItem[]> {
   try {
