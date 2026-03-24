@@ -7,6 +7,9 @@ import {
   TouchableOpacity,
   Image,
   ActivityIndicator,
+  Platform,
+  ScrollView,
+  useWindowDimensions,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter } from "expo-router";
@@ -28,6 +31,7 @@ type Tab = "intro" | "comments" | "danmaku";
 export default function VideoDetailScreen() {
   const { bvid } = useLocalSearchParams<{ bvid: string }>();
   const router = useRouter();
+  const { width } = useWindowDimensions();
   const {
     video,
     playData,
@@ -47,6 +51,12 @@ export default function VideoDetailScreen() {
   const [danmakus, setDanmakus] = useState<DanmakuItem[]>([]);
   const [currentTime, setCurrentTime] = useState(0);
   const [showDownload, setShowDownload] = useState(false);
+  const isWeb = Platform.OS === "web";
+  const stats = video?.stat;
+  const webShellWidth = Math.min(Math.max(width - 32, 320), 1320);
+  const isWideWeb = isWeb && webShellWidth >= 980;
+  const webMainWidth = isWideWeb ? Math.min(webShellWidth * 0.62, 820) : webShellWidth;
+  const webSideWidth = isWideWeb ? Math.max(webShellWidth - webMainWidth - 24, 320) : webShellWidth;
   const {
     videos: relatedVideos,
     loading: relatedLoading,
@@ -66,23 +76,344 @@ export default function VideoDetailScreen() {
     getDanmaku(video.cid).then(setDanmakus);
   }, [video?.cid]);
 
-  return (
-    <SafeAreaView style={styles.safe}>
-      {/* TopBar */}
-      <View style={styles.topBar}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-          <Ionicons name="chevron-back" size={24} color="#212121" />
+  const handleBack = () => {
+    if ((router as any).canGoBack?.()) {
+      router.back();
+    } else {
+      router.replace("/" as any);
+    }
+  };
+
+  const renderTopBar = () => (
+    <View style={[styles.topBar, isWeb && styles.webTopBar]}>
+      <TouchableOpacity onPress={handleBack} style={styles.backBtn}>
+        <Ionicons name="chevron-back" size={24} color="#212121" />
+      </TouchableOpacity>
+      <Text style={styles.topTitle} numberOfLines={1}>
+        {video?.title ?? "视频详情"}
+      </Text>
+      <TouchableOpacity
+        style={styles.miniBtn}
+        onPress={() => setShowDownload(true)}
+      >
+        <Ionicons name="cloud-download-outline" size={22} color="#212121" />
+      </TouchableOpacity>
+    </View>
+  );
+
+  const renderTabBar = () =>
+    video ? (
+      <View style={[styles.tabBar, isWeb && styles.webTabBar]}>
+        <TouchableOpacity style={styles.tabItem} onPress={() => setTab("intro")}>
+          <Text style={[styles.tabLabel, tab === "intro" && styles.tabActive]}>
+            简介
+          </Text>
+          {tab === "intro" && <View style={styles.tabUnderline} />}
         </TouchableOpacity>
-        <Text style={styles.topTitle} numberOfLines={1}>
-          {video?.title ?? "视频详情"}
-        </Text>
         <TouchableOpacity
-          style={styles.miniBtn}
-          onPress={() => setShowDownload(true)}
+          style={styles.tabItem}
+          onPress={() => setTab("comments")}
         >
-          <Ionicons name="cloud-download-outline" size={22} color="#212121" />
+          <Text style={[styles.tabLabel, tab === "comments" && styles.tabActive]}>
+            评论
+            {(stats?.reply ?? 0) > 0 ? ` ${formatCount(stats?.reply ?? 0)}` : ""}
+          </Text>
+          {tab === "comments" && <View style={styles.tabUnderline} />}
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.tabItem} onPress={() => setTab("danmaku")}>
+          <Text style={[styles.tabLabel, tab === "danmaku" && styles.tabActive]}>
+            弹幕
+            {danmakus.length > 0 ? ` ${formatCount(danmakus.length)}` : ""}
+          </Text>
+          {tab === "danmaku" && <View style={styles.tabUnderline} />}
         </TouchableOpacity>
       </View>
+    ) : null;
+
+  const renderIntroHeader = () => (
+    <>
+      <View style={styles.upRow}>
+        <Image
+          source={{ uri: proxyImageUrl(video?.owner.face ?? "") }}
+          style={styles.avatar}
+        />
+        <Text style={styles.upName}>{video?.owner.name ?? ""}</Text>
+        <TouchableOpacity style={styles.followBtn}>
+          <Text style={styles.followTxt}>+ 关注</Text>
+        </TouchableOpacity>
+      </View>
+      <View style={styles.titleSection}>
+        <Text style={styles.title}>{video?.title}</Text>
+        <View style={styles.statsRow}>
+          <StatBadge icon="play" count={stats?.view ?? 0} />
+          <StatBadge icon="heart" count={stats?.like ?? 0} />
+          <StatBadge icon="star" count={stats?.favorite ?? 0} />
+          <StatBadge icon="chatbubble" count={stats?.reply ?? 0} />
+        </View>
+      </View>
+      {video?.ugc_season && (
+        <SeasonSection
+          season={video.ugc_season}
+          currentBvid={bvid as string}
+          onEpisodePress={(epBvid) => router.replace(`/video/${epBvid}`)}
+        />
+      )}
+      <View style={styles.descBox}>
+        <Text style={styles.descText}>{video?.desc || "暂无简介"}</Text>
+      </View>
+      <View style={styles.relatedHeader}>
+        <Text style={styles.relatedHeaderText}>推荐视频</Text>
+      </View>
+    </>
+  );
+
+  const renderRelatedCard = (item: import("../../services/types").VideoItem) => (
+    <TouchableOpacity
+      key={item.bvid}
+      style={[styles.relatedCard, isWeb && styles.webRelatedCard]}
+      onPress={() => router.push(`/video/${item.bvid}` as any)}
+      activeOpacity={0.85}
+    >
+      <View style={styles.relatedThumbWrap}>
+        <Image
+          source={{ uri: proxyImageUrl(item.pic) }}
+          style={styles.relatedThumb}
+          resizeMode="cover"
+        />
+        <View style={styles.relatedDuration}>
+          <Text style={styles.relatedDurationText}>
+            {formatDuration(item.duration)}
+          </Text>
+        </View>
+      </View>
+      <View style={styles.relatedInfo}>
+        <Text style={styles.relatedTitle} numberOfLines={2}>
+          {item.title}
+        </Text>
+        <View style={styles.relatedMetaRow}>
+          <Text style={styles.relatedOwner} numberOfLines={1}>
+            {item.owner?.name ?? ""}
+          </Text>
+          <Text style={styles.relatedView}>
+            {formatCount(item.stat?.view ?? 0)} 播放
+          </Text>
+        </View>
+      </View>
+    </TouchableOpacity>
+  );
+
+  const renderIntroContent = () => {
+    if (isWeb) {
+      return (
+        <ScrollView
+          style={styles.webPanelScroll}
+          contentContainerStyle={styles.webPanelContent}
+          showsVerticalScrollIndicator={false}
+        >
+          {renderIntroHeader()}
+          {relatedVideos.map(renderRelatedCard)}
+          {relatedLoading && (
+            <ActivityIndicator style={styles.loader} color="#00AEEC" />
+          )}
+        </ScrollView>
+      );
+    }
+    return (
+      <FlatList<import("../../services/types").VideoItem>
+        style={styles.tabScroll}
+        data={relatedVideos}
+        keyExtractor={(item) => item.bvid}
+        showsVerticalScrollIndicator={false}
+        onEndReached={() => {
+          if (!relatedLoading) loadRelated();
+        }}
+        onEndReachedThreshold={0.5}
+        ListHeaderComponent={renderIntroHeader()}
+        renderItem={({ item }) => renderRelatedCard(item)}
+        ListEmptyComponent={
+          !relatedLoading ? (
+            <ActivityIndicator style={styles.loader} color="#00AEEC" />
+          ) : null
+        }
+        ListFooterComponent={
+          relatedLoading ? (
+            <ActivityIndicator style={styles.loader} color="#00AEEC" />
+          ) : null
+        }
+      />
+    );
+  };
+
+  const renderCommentsContent = () => {
+    if (isWeb) {
+      return (
+        <ScrollView
+          style={styles.webPanelScroll}
+          contentContainerStyle={styles.webPanelContent}
+          showsVerticalScrollIndicator={false}
+        >
+          <View style={styles.sortRow}>
+            <Text style={styles.sortLabel}>排序</Text>
+            <TouchableOpacity
+              style={[styles.sortBtn, commentSort === 2 && styles.sortBtnActive]}
+              onPress={() => setCommentSort(2)}
+            >
+              <Text
+                style={[
+                  styles.sortBtnTxt,
+                  commentSort === 2 && styles.sortBtnTxtActive,
+                ]}
+              >
+                热门
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.sortBtn, commentSort === 0 && styles.sortBtnActive]}
+              onPress={() => setCommentSort(0)}
+            >
+              <Text
+                style={[
+                  styles.sortBtnTxt,
+                  commentSort === 0 && styles.sortBtnTxtActive,
+                ]}
+              >
+                最新
+              </Text>
+            </TouchableOpacity>
+          </View>
+          {comments.map((item) => (
+            <CommentItem key={String(item.rpid)} item={item} />
+          ))}
+          {cmtLoading ? (
+            <ActivityIndicator style={styles.loader} color="#00AEEC" />
+          ) : !cmtHasMore && comments.length > 0 ? (
+            <Text style={styles.emptyTxt}>已加载全部评论</Text>
+          ) : comments.length === 0 ? (
+            <Text style={styles.emptyTxt}>暂无评论</Text>
+          ) : (
+            <TouchableOpacity
+              style={styles.webLoadMore}
+              onPress={() => loadComments()}
+            >
+              <Text style={styles.webLoadMoreText}>加载更多评论</Text>
+            </TouchableOpacity>
+          )}
+        </ScrollView>
+      );
+    }
+    return (
+      <FlatList
+        style={styles.tabScroll}
+        data={comments}
+        keyExtractor={(c) => String(c.rpid)}
+        renderItem={({ item }) => <CommentItem item={item} />}
+        onEndReached={() => {
+          if (cmtHasMore && !cmtLoading) loadComments();
+        }}
+        onEndReachedThreshold={0.3}
+        showsVerticalScrollIndicator={false}
+        ListHeaderComponent={
+          <View style={styles.sortRow}>
+            <Text style={styles.sortLabel}>排序</Text>
+            <TouchableOpacity
+              style={[styles.sortBtn, commentSort === 2 && styles.sortBtnActive]}
+              onPress={() => setCommentSort(2)}
+            >
+              <Text
+                style={[
+                  styles.sortBtnTxt,
+                  commentSort === 2 && styles.sortBtnTxtActive,
+                ]}
+              >
+                热门
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.sortBtn, commentSort === 0 && styles.sortBtnActive]}
+              onPress={() => setCommentSort(0)}
+            >
+              <Text
+                style={[
+                  styles.sortBtnTxt,
+                  commentSort === 0 && styles.sortBtnTxtActive,
+                ]}
+              >
+                最新
+              </Text>
+            </TouchableOpacity>
+          </View>
+        }
+        ListFooterComponent={
+          cmtLoading ? (
+            <ActivityIndicator style={styles.loader} color="#00AEEC" />
+          ) : !cmtHasMore && comments.length > 0 ? (
+            <Text style={styles.emptyTxt}>已加载全部评论</Text>
+          ) : null
+        }
+        ListEmptyComponent={!cmtLoading ? <Text style={styles.emptyTxt}>暂无评论</Text> : null}
+      />
+    );
+  };
+
+  const renderDanmakuContent = () => (
+    <DanmakuList
+      danmakus={danmakus}
+      currentTime={currentTime}
+      visible={tab === "danmaku"}
+      onToggle={() => {}}
+      hideHeader={true}
+      style={[isWeb ? styles.webDanmakuTab : styles.danmakuTab]}
+    />
+  );
+
+  if (isWideWeb) {
+    return (
+      <SafeAreaView style={styles.safe}>
+        <View style={[styles.webDetailShell, { width: webShellWidth }]}>
+          {renderTopBar()}
+          <View style={styles.webDetailBody}>
+            <View style={[styles.webMainCol, { width: webMainWidth }]}>
+              <View style={styles.webPlayerCard}>
+                <VideoPlayer
+                  playData={playData}
+                  qualities={qualities}
+                  currentQn={currentQn}
+                  onQualityChange={changeQuality}
+                  bvid={bvid as string}
+                  cid={video?.cid}
+                  danmakus={danmakus}
+                  onTimeUpdate={setCurrentTime}
+                />
+              </View>
+            </View>
+            <View style={[styles.webSideCol, { width: webSideWidth }]}>
+              <View style={styles.webPanel}>
+                {renderTabBar()}
+                {videoLoading ? (
+                  <ActivityIndicator style={styles.loader} color="#00AEEC" />
+                ) : video ? (
+                  tab === "intro" ? renderIntroContent() : tab === "comments" ? renderCommentsContent() : renderDanmakuContent()
+                ) : null}
+              </View>
+            </View>
+          </View>
+        </View>
+        <DownloadSheet
+          visible={showDownload}
+          onClose={() => setShowDownload(false)}
+          bvid={bvid as string}
+          cid={video?.cid ?? 0}
+          title={video?.title ?? ""}
+          cover={video?.pic ?? ""}
+          qualities={qualities}
+        />
+      </SafeAreaView>
+    );
+  }
+
+  return (
+    <SafeAreaView style={styles.safe}>
+      {renderTopBar()}
 
       {/* Video player — fixed 16:9 */}
       <VideoPlayer
@@ -106,228 +437,31 @@ export default function VideoDetailScreen() {
       />
 
       {/* TabBar — sits directly below player, always visible once video loads */}
-      {video && (
-        <View style={styles.tabBar}>
-          <TouchableOpacity
-            style={styles.tabItem}
-            onPress={() => setTab("intro")}
-          >
-            <Text
-              style={[styles.tabLabel, tab === "intro" && styles.tabActive]}
-            >
-              简介
-            </Text>
-            {tab === "intro" && <View style={styles.tabUnderline} />}
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.tabItem}
-            onPress={() => setTab("comments")}
-          >
-            <Text
-              style={[styles.tabLabel, tab === "comments" && styles.tabActive]}
-            >
-              评论
-              {video.stat?.reply > 0 ? ` ${formatCount(video.stat.reply)}` : ""}
-            </Text>
-            {tab === "comments" && <View style={styles.tabUnderline} />}
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.tabItem}
-            onPress={() => setTab("danmaku")}
-          >
-            <Text
-              style={[styles.tabLabel, tab === "danmaku" && styles.tabActive]}
-            >
-              弹幕
-              {danmakus.length > 0 ? ` ${formatCount(danmakus.length)}` : ""}
-            </Text>
-            {tab === "danmaku" && <View style={styles.tabUnderline} />}
-          </TouchableOpacity>
-        </View>
-      )}
+      {renderTabBar()}
 
       {/* Tab content */}
       {videoLoading ? (
         <ActivityIndicator style={styles.loader} color="#00AEEC" />
       ) : video ? (
         <>
-          {tab === "intro" && (
-            <FlatList<import("../../services/types").VideoItem>
-              style={styles.tabScroll}
-              data={relatedVideos}
-              keyExtractor={(item) => item.bvid}
-              showsVerticalScrollIndicator={false}
-              onEndReached={() => {
-                if (!relatedLoading) loadRelated();
-              }}
-              onEndReachedThreshold={0.5}
-              ListHeaderComponent={
-                <>
-                  <View style={styles.upRow}>
-                    <Image
-                      source={{ uri: proxyImageUrl(video.owner.face) }}
-                      style={styles.avatar}
-                    />
-                    <Text style={styles.upName}>{video.owner.name}</Text>
-                    <TouchableOpacity style={styles.followBtn}>
-                      <Text style={styles.followTxt}>+ 关注</Text>
-                    </TouchableOpacity>
-                  </View>
-                  <View style={styles.titleSection}>
-                    <Text style={styles.title}>{video.title}</Text>
-                    <View style={styles.statsRow}>
-                      <StatBadge icon="play" count={video.stat.view} />
-                      <StatBadge icon="heart" count={video.stat.like} />
-                      <StatBadge icon="star" count={video.stat.favorite} />
-                      <StatBadge icon="chatbubble" count={video.stat.reply} />
-                    </View>
-                  </View>
-                  {video.ugc_season && (
-                    <SeasonSection
-                      season={video.ugc_season}
-                      currentBvid={bvid as string}
-                      onEpisodePress={(epBvid) =>
-                        router.replace(`/video/${epBvid}`)
-                      }
-                    />
-                  )}
-                  <View style={styles.descBox}>
-                    <Text style={styles.descText}>
-                      {video.desc || "暂无简介"}
-                    </Text>
-                  </View>
-                  <View style={styles.relatedHeader}>
-                    <Text style={styles.relatedHeaderText}>推荐视频</Text>
-                  </View>
-                </>
-              }
-              renderItem={({ item }) => (
-                <TouchableOpacity
-                  style={styles.relatedCard}
-                  onPress={() => router.push(`/video/${item.bvid}` as any)}
-                  activeOpacity={0.85}
-                >
-                  <View style={styles.relatedThumbWrap}>
-                    <Image
-                      source={{ uri: proxyImageUrl(item.pic) }}
-                      style={styles.relatedThumb}
-                      resizeMode="cover"
-                    />
-                    <View style={styles.relatedDuration}>
-                      <Text style={styles.relatedDurationText}>
-                        {formatDuration(item.duration)}
-                      </Text>
-                    </View>
-                  </View>
-                  <View style={styles.relatedInfo}>
-                    <Text style={styles.relatedTitle} numberOfLines={2}>
-                      {item.title}
-                    </Text>
-                    <View
-                      style={{
-                        flexDirection: "row",
-                        alignItems: "center",
-                        justifyContent: "space-between",
-                      }}
-                    >
-                      <Text style={styles.relatedOwner} numberOfLines={1}>
-                        {item.owner?.name ?? ""}
-                      </Text>
-                      <Text style={styles.relatedView}>
-                        {formatCount(item.stat?.view ?? 0)} 播放
-                      </Text>
-                    </View>
-                  </View>
-                </TouchableOpacity>
-              )}
-              ListEmptyComponent={
-                !relatedLoading ? (
-                  <ActivityIndicator style={styles.loader} color="#00AEEC" />
-                ) : null
-              }
-              ListFooterComponent={
-                relatedLoading ? (
-                  <ActivityIndicator style={styles.loader} color="#00AEEC" />
-                ) : null
-              }
-            />
-          )}
-
-          {tab === "comments" && (
-            <FlatList
-              style={styles.tabScroll}
-              data={comments}
-              keyExtractor={(c) => String(c.rpid)}
-              renderItem={({ item }) => <CommentItem item={item} />}
-              onEndReached={() => {
-                if (cmtHasMore && !cmtLoading) loadComments();
-              }}
-              onEndReachedThreshold={0.3}
-              showsVerticalScrollIndicator={false}
-              ListHeaderComponent={
-                <View style={styles.sortRow}>
-                  <Text style={styles.sortLabel}>排序</Text>
-                  <TouchableOpacity
-                    style={[
-                      styles.sortBtn,
-                      commentSort === 2 && styles.sortBtnActive,
-                    ]}
-                    onPress={() => setCommentSort(2)}
-                  >
-                    <Text
-                      style={[
-                        styles.sortBtnTxt,
-                        commentSort === 2 && styles.sortBtnTxtActive,
-                      ]}
-                    >
-                      热门
-                    </Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[
-                      styles.sortBtn,
-                      commentSort === 0 && styles.sortBtnActive,
-                    ]}
-                    onPress={() => setCommentSort(0)}
-                  >
-                    <Text
-                      style={[
-                        styles.sortBtnTxt,
-                        commentSort === 0 && styles.sortBtnTxtActive,
-                      ]}
-                    >
-                      最新
-                    </Text>
-                  </TouchableOpacity>
-                </View>
-              }
-              ListFooterComponent={
-                cmtLoading ? (
-                  <ActivityIndicator style={styles.loader} color="#00AEEC" />
-                ) : !cmtHasMore && comments.length > 0 ? (
-                  <Text style={styles.emptyTxt}>已加载全部评论</Text>
-                ) : null
-              }
-              ListEmptyComponent={
-                !cmtLoading ? (
-                  <Text style={styles.emptyTxt}>暂无评论</Text>
-                ) : null
-              }
-            />
-          )}
-
-          {/* 弹幕面板：始终挂载，切 tab 时用 display:none 隐藏而不卸载 */}
-          <DanmakuList
-            danmakus={danmakus}
-            currentTime={currentTime}
-            visible={tab === "danmaku"}
-            onToggle={() => {}}
-            hideHeader={true}
-            style={[
-              styles.danmakuTab,
-              tab !== "danmaku" && { display: "none" },
-            ]}
-          />
+          {tab === "intro" && renderIntroContent()}
+          {tab === "comments" && renderCommentsContent()}
+          {tab === "danmaku" &&
+            (isWeb ? (
+              renderDanmakuContent()
+            ) : (
+              <DanmakuList
+                danmakus={danmakus}
+                currentTime={currentTime}
+                visible={tab === "danmaku"}
+                onToggle={() => {}}
+                hideHeader={true}
+                style={[
+                  styles.danmakuTab,
+                  tab !== "danmaku" && { display: "none" },
+                ]}
+              />
+            ))}
         </>
       ) : null}
     </SafeAreaView>
@@ -420,6 +554,47 @@ function SeasonSection({
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: "#fff" },
+  webDetailShell: {
+    flex: 1,
+    alignSelf: "center",
+    width: "100%",
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    paddingBottom: 20,
+  },
+  webDetailBody: {
+    flex: 1,
+    flexDirection: "row",
+    gap: 24,
+    alignItems: "flex-start",
+  },
+  webMainCol: {
+    flexShrink: 0,
+  },
+  webPlayerCard: {
+    backgroundColor: "#fff",
+    borderRadius: 18,
+    overflow: "hidden",
+    borderWidth: 1,
+    borderColor: "#e8edf2",
+  },
+  webSideCol: {
+    flex: 1,
+  },
+  webPanel: {
+    backgroundColor: "#fff",
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: "#e8edf2",
+    overflow: "hidden",
+    minHeight: 640,
+  },
+  webPanelScroll: {
+    flex: 1,
+  },
+  webPanelContent: {
+    paddingBottom: 24,
+  },
   topBar: {
     flexDirection: "row",
     alignItems: "center",
@@ -427,6 +602,11 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: "#eee",
+  },
+  webTopBar: {
+    marginBottom: 16,
+    paddingHorizontal: 0,
+    paddingTop: 0,
   },
   backBtn: { padding: 4 },
   topTitle: {
@@ -507,6 +687,9 @@ const styles = StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: "#eee",
   },
+  webTabBar: {
+    paddingHorizontal: 8,
+  },
   tabItem: {
     flex: 1,
     alignItems: "center",
@@ -527,6 +710,9 @@ const styles = StyleSheet.create({
   descBox: { padding: 16 },
   descText: { fontSize: 14, color: "#555", lineHeight: 22 },
   danmakuTab: { flex: 1 },
+  webDanmakuTab: {
+    height: 720,
+  },
   emptyTxt: { textAlign: "center", color: "#bbb", padding: 30 },
   relatedHeader: {
     paddingHorizontal: 14,
@@ -548,6 +734,9 @@ const styles = StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: "#f0f0f0",
     gap: 10,
+  },
+  webRelatedCard: {
+    paddingHorizontal: 14,
   },
   relatedThumbWrap: {
     position: "relative",
@@ -574,6 +763,11 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     paddingVertical: 2,
   },
+  relatedMetaRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
   relatedTitle: { fontSize: 13, color: "#212121", lineHeight: 18 },
   relatedOwner: { fontSize: 12, color: "#999" },
   relatedView: { fontSize: 11, color: "#bbb" },
@@ -597,4 +791,19 @@ const styles = StyleSheet.create({
   sortBtnActive: { borderColor: "#00AEEC", backgroundColor: "#e8f7fd" },
   sortBtnTxt: { fontSize: 12, color: "#666" },
   sortBtnTxtActive: { color: "#00AEEC", fontWeight: "600" as const },
+  webLoadMore: {
+    alignSelf: "center",
+    marginTop: 8,
+    borderWidth: 1,
+    borderColor: "#cfefff",
+    backgroundColor: "#f6fcff",
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 999,
+  },
+  webLoadMoreText: {
+    color: "#00AEEC",
+    fontSize: 13,
+    fontWeight: "600",
+  },
 });

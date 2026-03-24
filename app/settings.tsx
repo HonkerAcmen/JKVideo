@@ -12,16 +12,23 @@ export default function SettingsScreen() {
   const { isLoggedIn, logout } = useAuthStore();
   const { coverQuality, setCoverQuality } = useSettingsStore();
   const { currentVersion, isChecking, downloadProgress, checkUpdate } = useCheckUpdate();
+  const handleBack = () => {
+    if ((router as any).canGoBack?.()) {
+      router.back();
+    } else {
+      router.replace("/" as any);
+    }
+  };
 
   const handleLogout = async () => {
     await logout();
-    router.back();
+    handleBack();
   };
 
   return (
     <SafeAreaView style={styles.safe}>
       <View style={styles.topBar}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+        <TouchableOpacity onPress={handleBack} style={styles.backBtn}>
           <Ionicons name="chevron-back" size={24} color="#212121" />
         </TouchableOpacity>
         <Text style={styles.topTitle}>设置</Text>

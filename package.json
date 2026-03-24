@@ -45,7 +45,8 @@
     "@types/pako": "^2.0.4",
     "@types/react": "~19.2.2",
     "express": "^4.22.1",
-    "typescript": "~5.9.2"
+    "typescript": "~5.9.2",
+    "ws": "^8.20.0"
   },
   "private": true
 }

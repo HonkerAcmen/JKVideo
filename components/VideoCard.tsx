@@ -5,7 +5,7 @@ import {
   Image,
   TouchableOpacity,
   StyleSheet,
-  Dimensions,
+  useWindowDimensions,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import type { VideoItem } from "../services/types";
@@ -13,26 +13,30 @@ import { formatCount, formatDuration } from "../utils/format";
 import { coverImageUrl } from "../utils/imageUrl";
 import { useSettingsStore } from "../store/settingsStore";
 
-const { width } = Dimensions.get("window");
-const CARD_WIDTH = (width - 14) / 2;
-
 interface Props {
   item: VideoItem;
   onPress: () => void;
+  width?: number;
 }
 
-export const VideoCard = React.memo(function VideoCard({ item, onPress }: Props) {
+export const VideoCard = React.memo(function VideoCard({
+  item,
+  onPress,
+  width,
+}: Props) {
+  const { width: windowWidth } = useWindowDimensions();
   const coverQuality = useSettingsStore(s => s.coverQuality);
+  const cardWidth = width ?? (windowWidth - 14) / 2;
   return (
     <TouchableOpacity
-      style={styles.card}
+      style={[styles.card, { width: cardWidth }]}
       onPress={onPress}
       activeOpacity={0.85}
     >
       <View style={styles.thumbContainer}>
         <Image
           source={{ uri: coverImageUrl(item.pic, coverQuality) }}
-          style={styles.thumb}
+          style={[styles.thumb, { width: cardWidth, height: cardWidth * 0.5625 }]}
           resizeMode="cover"
         />
         <View style={styles.meta}>
@@ -61,7 +65,6 @@ export const VideoCard = React.memo(function VideoCard({ item, onPress }: Props)
 
 const styles = StyleSheet.create({
   card: {
-    width: CARD_WIDTH,
     marginBottom: 6,
     backgroundColor: "#fff",
     borderRadius: 6,
@@ -69,8 +72,6 @@ const styles = StyleSheet.create({
   },
   thumbContainer: { position: "relative" },
   thumb: {
-    width: CARD_WIDTH,
-    height: CARD_WIDTH * 0.5625,
     backgroundColor: "#ddd",
   },
   durationBadge: {

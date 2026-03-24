@@ -36,6 +36,13 @@ export default function DownloadsScreen() {
   const [shareTask, setShareTask] = useState<(DownloadTask & { key: string }) | null>(null);
   const { width, height } = useWindowDimensions();
   const isLandscape = width > height;
+  const handleBack = () => {
+    if ((router as any).canGoBack?.()) {
+      router.back();
+    } else {
+      router.replace("/" as any);
+    }
+  };
 
   async function openPlayer(uri: string, title: string) {
     setPlayingTitle(title);
@@ -63,7 +70,7 @@ export default function DownloadsScreen() {
   return (
     <SafeAreaView style={styles.safe}>
       <View style={styles.topBar}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+        <TouchableOpacity onPress={handleBack} style={styles.backBtn}>
           <Ionicons name="chevron-back" size={24} color="#212121" />
         </TouchableOpacity>
         <Text style={styles.topTitle}>我的下载</Text>

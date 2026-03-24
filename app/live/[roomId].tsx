@@ -37,11 +37,18 @@ export default function LiveDetailScreen() {
   // Use actual roomid from room detail (not the short/alias ID from the URL)
   const actualRoomId = room?.roomid ?? id;
   const { danmakus, giftCounts } = useLiveDanmaku(isLive ? actualRoomId : 0);
+  const handleBack = () => {
+    if ((router as any).canGoBack?.()) {
+      router.back();
+    } else {
+      router.replace("/" as any);
+    }
+  };
   return (
     <SafeAreaView style={styles.safe}>
       {/* TopBar */}
       <View style={styles.topBar}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+        <TouchableOpacity onPress={handleBack} style={styles.backBtn}>
           <Ionicons name="chevron-back" size={24} color="#212121" />
         </TouchableOpacity>
         <Text style={styles.topTitle} numberOfLines={1}>

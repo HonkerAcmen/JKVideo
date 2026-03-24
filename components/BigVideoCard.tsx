@@ -46,6 +46,7 @@ interface Props {
   isVisible: boolean;
   isScrolling?: boolean;
   onPress: () => void;
+  width?: number;
 }
 
 export const BigVideoCard = React.memo(function BigVideoCard({
@@ -53,11 +54,13 @@ export const BigVideoCard = React.memo(function BigVideoCard({
   isVisible,
   isScrolling,
   onPress,
+  width,
 }: Props) {
   const { width: SCREEN_W } = useWindowDimensions();
   const coverQuality = useSettingsStore(s => s.coverQuality);
-  const THUMB_H = SCREEN_W * 0.5625;
-  const mediaDimensions = { width: SCREEN_W - 8, height: THUMB_H };
+  const cardWidth = width ?? SCREEN_W - 8;
+  const THUMB_H = cardWidth * 0.5625;
+  const mediaDimensions = { width: cardWidth, height: THUMB_H };
 
   const [videoUrl, setVideoUrl] = useState<string | undefined>();
   const [isDash, setIsDash] = useState(false);
@@ -223,7 +226,7 @@ export const BigVideoCard = React.memo(function BigVideoCard({
   const bufferedRatio = duration > 0 ? clamp(buffered / duration, 0, 1) : 0;
 
   return (
-    <View style={styles.card}>
+    <View style={[styles.card, { width: cardWidth, alignSelf: "center" }]}>
       {/* Media area */}
       <View style={[mediaDimensions, { position: "relative" }]}>
         {/* Video player — rendered first so it sits behind the thumbnail */}

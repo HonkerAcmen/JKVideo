@@ -5,7 +5,7 @@ import {
   Image,
   TouchableOpacity,
   StyleSheet,
-  Dimensions,
+  useWindowDimensions,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { LivePulse } from "./LivePulse";
@@ -13,23 +13,23 @@ import type { LiveRoom } from "../services/types";
 import { formatCount } from "../utils/format";
 import { proxyImageUrl } from "../utils/imageUrl";
 
-const { width } = Dimensions.get("window");
-const CARD_WIDTH = (width - 14) / 2;
-
 interface Props {
   item: LiveRoom;
   isLivePulse?: Boolean;
   onPress?: () => void;
   fullWidth?: boolean;
+  width?: number;
 }
 
 export const LiveCard = React.memo(function LiveCard({
   item,
   onPress,
   fullWidth,
+  width,
   isLivePulse = false,
 }: Props) {
-  const cardWidth = fullWidth ? width - 8 : CARD_WIDTH;
+  const { width: windowWidth } = useWindowDimensions();
+  const cardWidth = width ?? (fullWidth ? windowWidth - 8 : (windowWidth - 14) / 2);
   return (
     <TouchableOpacity
       style={[styles.card, { width: cardWidth }]}
@@ -77,7 +77,6 @@ export const LiveCard = React.memo(function LiveCard({
 
 const styles = StyleSheet.create({
   card: {
-    width: CARD_WIDTH,
     marginBottom: 6,
     backgroundColor: "#fff",
     borderRadius: 6,
@@ -85,8 +84,6 @@ const styles = StyleSheet.create({
   },
   thumbContainer: { position: "relative" },
   thumb: {
-    width: CARD_WIDTH,
-    height: CARD_WIDTH * 0.5625,
     backgroundColor: "#ddd",
   },
   liveBadge: {

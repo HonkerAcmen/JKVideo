@@ -19,6 +19,13 @@ export default function SearchScreen() {
   const router = useRouter();
   const { keyword, setKeyword, results, loading, hasMore, search, loadMore } = useSearch();
   const inputRef = useRef<TextInput>(null);
+  const handleBack = () => {
+    if ((router as any).canGoBack?.()) {
+      router.back();
+    } else {
+      router.replace("/" as any);
+    }
+  };
 
   const handleSearch = useCallback(() => {
     if (keyword.trim()) {
@@ -77,7 +84,7 @@ export default function SearchScreen() {
     <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>
       {/* Search header */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+        <TouchableOpacity onPress={handleBack} style={styles.backBtn}>
           <Ionicons name="chevron-back" size={24} color="#212121" />
         </TouchableOpacity>
         <View style={styles.inputWrap}>
