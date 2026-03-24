@@ -792,7 +792,7 @@ export const NativeVideoPlayer = forwardRef<NativeVideoPlayerRef, Props>(
             </TouchableOpacity>
 
             <LinearGradient
-              colors={["transparent", "rgba(0,0,0,0.7)"]}
+              colors={["transparent", "rgba(0,0,0,0.18)", "rgba(0,0,0,0.82)"]}
               style={styles.bottomBar}
               pointerEvents="box-none"
             >
@@ -839,68 +839,66 @@ export const NativeVideoPlayer = forwardRef<NativeVideoPlayerRef, Props>(
                   />
                 )}
               </View>
-              {/* Controls */}
-
               <View style={styles.ctrlRow}>
-                <TouchableOpacity
-                  onPress={() => {
-                    setPaused((p) => !p);
-                    showAndReset();
-                  }}
-                  style={styles.ctrlBtn}
-                  hitSlop={CONTROL_HIT_SLOP}
-                >
-                  <Ionicons
-                    name={paused ? "play" : "pause"}
-                    size={16}
-                    color="#fff"
-                  />
-                </TouchableOpacity>
-                <Text style={styles.timeText}>
-                  {formatDuration(Math.floor(currentTime))}
-                </Text>
-                <View style={{ flex: 1 }} />
-                <Text style={styles.timeText}>{formatDuration(duration)}</Text>
-                <TouchableOpacity
-                  style={styles.ctrlBtn}
-                  onPress={() => setShowQuality(true)}
-                  hitSlop={CONTROL_HIT_SLOP}
-                >
-                  <Text style={styles.qualityText}>{currentDesc}</Text>
-                </TouchableOpacity>
-                {isFullscreen && (
+                <View style={styles.ctrlLeft}>
                   <TouchableOpacity
-                    style={styles.ctrlBtn}
-                    onPress={() => setShowDanmaku((v) => !v)}
+                    onPress={() => {
+                      setPaused((p) => !p);
+                      showAndReset();
+                    }}
+                    style={styles.primaryCtrlBtn}
                     hitSlop={CONTROL_HIT_SLOP}
                   >
                     <Ionicons
-                      name={showDanmaku ? "chatbubbles" : "chatbubbles-outline"}
-                      size={16}
+                      name={paused ? "play" : "pause"}
+                      size={18}
                       color="#fff"
                     />
                   </TouchableOpacity>
-                )}
-                {fullscreenMode === "portrait" && onRotateToLandscape && (
+                  <Text style={styles.timeText}>
+                    {formatDuration(Math.floor(currentTime))}
+                  </Text>
+                  <Text style={styles.timeDivider}>/</Text>
+                  <Text style={styles.timeTextMuted}>{formatDuration(duration)}</Text>
+                </View>
+                <View style={styles.ctrlRight}>
                   <TouchableOpacity
-                    style={styles.ctrlBtn}
-                    onPress={onRotateToLandscape}
+                    style={styles.chipCtrlBtn}
+                    onPress={() => setShowQuality(true)}
                     hitSlop={CONTROL_HIT_SLOP}
                   >
-                    <Ionicons name="phone-landscape" size={18} color="#fff" />
+                    <Text style={styles.qualityText}>{currentDesc}</Text>
                   </TouchableOpacity>
-                )}
-                <TouchableOpacity
-                  style={styles.ctrlBtn}
-                  onPress={onFullscreen}
-                  hitSlop={CONTROL_HIT_SLOP}
-                >
-                  <Ionicons
-                    name={isFullscreen ? "contract" : "expand"}
-                    size={18}
-                    color="#fff"
-                  />
-                </TouchableOpacity>
+                  {fullscreenMode !== "landscape" && onRotateToLandscape && (
+                    <TouchableOpacity
+                      style={styles.iconCtrlBtn}
+                      onPress={onRotateToLandscape}
+                      hitSlop={CONTROL_HIT_SLOP}
+                    >
+                      <Ionicons
+                        name="phone-landscape"
+                        size={18}
+                        color="#fff"
+                      />
+                    </TouchableOpacity>
+                  )}
+                  <TouchableOpacity
+                    style={styles.iconCtrlBtn}
+                    onPress={onFullscreen}
+                    hitSlop={CONTROL_HIT_SLOP}
+                  >
+                    <Ionicons
+                      name={isFullscreen ? "contract" : "expand"}
+                      size={18}
+                      color="#fff"
+                    />
+                  </TouchableOpacity>
+                </View>
+              </View>
+              <View style={styles.controlHintRow}>
+                <Text style={styles.controlHintText}>
+                  双指下滑全屏 · 双指上滑退出
+                </Text>
               </View>
             </LinearGradient>
           </>
@@ -1000,8 +998,8 @@ const styles = StyleSheet.create({
     bottom: 0,
     left: 0,
     right: 0,
-    paddingBottom: 8,
-    paddingTop: 32,
+    paddingBottom: 12,
+    paddingTop: 40,
   },
   thumbPreview: { position: "absolute", bottom: 64, alignItems: "center" },
   thumbTime: {
@@ -1014,16 +1012,16 @@ const styles = StyleSheet.create({
     textShadowRadius: 2,
   },
   trackWrapper: {
-    marginHorizontal: 8,
-    height: BAR_H + BALL_ACTIVE,
+    marginHorizontal: 14,
+    height: BAR_H + BALL_ACTIVE + 2,
     justifyContent: "center",
     position: "relative",
   },
   track: {
-    height: BAR_H,
-    borderRadius: 2,
+    height: 4,
+    borderRadius: 999,
     overflow: "hidden",
-    backgroundColor: "rgba(255,255,255,0.2)",
+    backgroundColor: "rgba(255,255,255,0.24)",
   },
   trackLayer: {
     position: "absolute",
@@ -1033,7 +1031,7 @@ const styles = StyleSheet.create({
   },
   ball: {
     position: "absolute",
-    top: (BAR_H + BALL_ACTIVE) / 2 - BALL / 2,
+    top: (BAR_H + BALL_ACTIVE) / 2 - BALL / 2 + 1,
     width: BALL,
     height: BALL,
     borderRadius: BALL / 2,
@@ -1041,26 +1039,82 @@ const styles = StyleSheet.create({
     elevation: 3,
   },
   ballActive: {
-    width: BALL_ACTIVE,
-    height: BALL_ACTIVE,
-    borderRadius: BALL_ACTIVE / 2,
+    width: 18,
+    height: 18,
+    borderRadius: 9,
     backgroundColor: "#00AEEC",
-    top: 0,
+    top: -1,
   },
   ctrlRow: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: 8,
-    marginTop: 4,
+    justifyContent: "space-between",
+    paddingHorizontal: 12,
+    marginTop: 10,
   },
-  ctrlBtn: { paddingHorizontal: 8, paddingVertical: 4 },
+  ctrlLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    flexShrink: 1,
+  },
+  ctrlRight: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginLeft: 12,
+  },
+  primaryCtrlBtn: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: "rgba(255,255,255,0.16)",
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: 10,
+  },
+  iconCtrlBtn: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: "rgba(255,255,255,0.12)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  chipCtrlBtn: {
+    minWidth: 54,
+    height: 34,
+    borderRadius: 17,
+    paddingHorizontal: 12,
+    backgroundColor: "rgba(255,255,255,0.14)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
   timeText: {
     color: "#fff",
-    fontSize: 11,
-    marginHorizontal: 2,
+    fontSize: 12,
     fontWeight: "600",
   },
-  qualityText: { color: "#fff", fontSize: 11, fontWeight: "600" },
+  timeTextMuted: {
+    color: "rgba(255,255,255,0.72)",
+    fontSize: 12,
+    fontWeight: "500",
+  },
+  timeDivider: {
+    color: "rgba(255,255,255,0.46)",
+    fontSize: 12,
+    marginHorizontal: 5,
+    fontWeight: "600",
+  },
+  qualityText: { color: "#fff", fontSize: 12, fontWeight: "700" },
+  controlHintRow: {
+    paddingHorizontal: 14,
+    marginTop: 8,
+  },
+  controlHintText: {
+    color: "rgba(255,255,255,0.56)",
+    fontSize: 10,
+    fontWeight: "500",
+  },
   modalOverlay: {
     flex: 1,
     backgroundColor: "rgba(0,0,0,0.5)",
