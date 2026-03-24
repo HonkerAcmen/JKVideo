@@ -21,6 +21,7 @@ interface Props {
 }
 
 const HIDE_DELAY = 3000;
+const CONTROL_HIT_SLOP = { top: 10, bottom: 10, left: 10, right: 10 };
 
 const HEADERS = {
   Referer: 'https://live.bilibili.com',
@@ -184,6 +185,7 @@ function NativeLivePlayer({
           <TouchableOpacity
             style={styles.centerBtn}
             onPress={() => { setPaused(p => !p); resetHideTimer(); }}
+            hitSlop={CONTROL_HIT_SLOP}
           >
             <View style={styles.centerBtnBg}>
               <Ionicons name={paused ? 'play' : 'pause'} size={28} color="#fff" />
@@ -195,6 +197,7 @@ function NativeLivePlayer({
             <TouchableOpacity
               style={styles.ctrlBtn}
               onPress={() => { setPaused(p => !p); resetHideTimer(); }}
+              hitSlop={CONTROL_HIT_SLOP}
             >
               <Ionicons name={paused ? 'play' : 'pause'} size={16} color="#fff" />
             </TouchableOpacity>
@@ -203,6 +206,7 @@ function NativeLivePlayer({
               <TouchableOpacity
                 style={styles.qualityBtn}
                 onPress={() => { setShowQualityPanel(true); resetHideTimer(); }}
+                hitSlop={CONTROL_HIT_SLOP}
               >
                 <Text style={styles.qualityText}>{currentQnDesc || '清晰度'}</Text>
               </TouchableOpacity>
@@ -210,6 +214,7 @@ function NativeLivePlayer({
             <TouchableOpacity
               style={styles.ctrlBtn}
               onPress={() => { setIsFullscreen(fs => !fs); resetHideTimer(); }}
+              hitSlop={CONTROL_HIT_SLOP}
             >
               <Ionicons name={isFullscreen ? 'contract' : 'expand'} size={16} color="#fff" />
             </TouchableOpacity>
@@ -232,6 +237,7 @@ function NativeLivePlayer({
                       onQualityChange?.(q.qn);
                       setShowQualityPanel(false);
                     }}
+                    hitSlop={CONTROL_HIT_SLOP}
                   >
                     <Text style={[styles.qualityItemText, currentQn === q.qn && styles.qualityItemTextActive]}>
                       {q.desc}

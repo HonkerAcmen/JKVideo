@@ -12,6 +12,7 @@ import {
   StyleSheet,
   TouchableOpacity,
   TouchableWithoutFeedback,
+  Pressable,
   Text,
   Modal,
   Image,
@@ -36,6 +37,9 @@ const BALL = 12;
 // 活跃状态下的拖动球增大尺寸，提升触控体验
 const BALL_ACTIVE = 16;
 const HIDE_DELAY = 3000;
+const CONTROL_HIT_SLOP = { top: 10, bottom: 10, left: 10, right: 10 };
+const LONG_PRESS_RATE = 2;
+const LONG_PRESS_DELAY = 260;
 
 const HEADERS = {
   Referer: "https://www.bilibili.com",
@@ -108,6 +112,7 @@ export const NativeVideoPlayer = forwardRef<NativeVideoPlayerRef, Props>(
     const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
     const [paused, setPaused] = useState(false);
+    const [playbackRate, setPlaybackRate] = useState(1);
     const [currentTime, setCurrentTime] = useState(0);
     const [duration, setDuration] = useState(0);
     const durationRef = useRef(0);
@@ -126,8 +131,10 @@ export const NativeVideoPlayer = forwardRef<NativeVideoPlayerRef, Props>(
 
     const [shots, setShots] = useState<VideoShotData | null>(null);
     const [showDanmaku, setShowDanmaku] = useState(true);
+    const [isLongPressing, setIsLongPressing] = useState(false);
 
     const videoRef = useRef<VideoRef>(null);
+    const longPressTriggeredRef = useRef(false);
 
     useImperativeHandle(ref, () => ({
       seek: (t: number) => {
@@ -202,6 +209,31 @@ export const NativeVideoPlayer = forwardRef<NativeVideoPlayerRef, Props>(
         return false;
       });
     }, [resetHideTimer]);
+
+    const handleLongPress = useCallback(() => {
+      if (paused || forcePaused) return;
+      longPressTriggeredRef.current = true;
+      setIsLongPressing(true);
+      setPlaybackRate(LONG_PRESS_RATE);
+      setShowControls(true);
+      if (hideTimer.current) clearTimeout(hideTimer.current);
+    }, [paused, forcePaused]);
+
+    const handlePressOut = useCallback(() => {
+      if (!longPressTriggeredRef.current) return;
+      longPressTriggeredRef.current = false;
+      setIsLongPressing(false);
+      setPlaybackRate(1);
+      resetHideTimer();
+    }, [resetHideTimer]);
+
+    useEffect(() => {
+      if (paused || forcePaused) {
+        longPressTriggeredRef.current = false;
+        setIsLongPressing(false);
+        setPlaybackRate(1);
+      }
+    }, [paused, forcePaused]);
 
     // 组件卸载时清理隐藏计时器，避免内存泄漏和潜在的状态更新错误。依赖项为空数组确保只在挂载和卸载时执行一次。
     useEffect(() => {
@@ -396,6 +428,7 @@ export const NativeVideoPlayer = forwardRef<NativeVideoPlayerRef, Props>(
             resizeMode="contain"
             controls={false}
             paused={!!(forcePaused || paused)}
+            rate={playbackRate}
             onProgress={({
               currentTime: ct,
               seekableDuration: dur,
@@ -434,9 +467,23 @@ export const NativeVideoPlayer = forwardRef<NativeVideoPlayerRef, Props>(
           />
         )}
 
-        <TouchableWithoutFeedback onPress={handleTap}>
-          <View style={StyleSheet.absoluteFill} />
-        </TouchableWithoutFeedback>
+        <Pressable
+          style={StyleSheet.absoluteFill}
+          onPress={() => {
+            if (longPressTriggeredRef.current) return;
+            handleTap();
+          }}
+          onLongPress={handleLongPress}
+          onPressOut={handlePressOut}
+          delayLongPress={LONG_PRESS_DELAY}
+        />
+
+        {isLongPressing && (
+          <View style={styles.longPressBadge} pointerEvents="none">
+            <Ionicons name="play-forward" size={16} color="#fff" />
+            <Text style={styles.longPressText}>{LONG_PRESS_RATE}x 快进中</Text>
+          </View>
+        )}
 
         {showControls && (
           <>
@@ -453,6 +500,7 @@ export const NativeVideoPlayer = forwardRef<NativeVideoPlayerRef, Props>(
                 setPaused((p) => !p);
                 showAndReset();
               }}
+              hitSlop={CONTROL_HIT_SLOP}
             >
               <View style={styles.centerBtnBg}>
                 <Ionicons
@@ -520,6 +568,7 @@ export const NativeVideoPlayer = forwardRef<NativeVideoPlayerRef, Props>(
                     showAndReset();
                   }}
                   style={styles.ctrlBtn}
+                  hitSlop={CONTROL_HIT_SLOP}
                 >
                   <Ionicons
                     name={paused ? "play" : "pause"}
@@ -535,6 +584,7 @@ export const NativeVideoPlayer = forwardRef<NativeVideoPlayerRef, Props>(
                 <TouchableOpacity
                   style={styles.ctrlBtn}
                   onPress={() => setShowQuality(true)}
+                  hitSlop={CONTROL_HIT_SLOP}
                 >
                   <Text style={styles.qualityText}>{currentDesc}</Text>
                 </TouchableOpacity>
@@ -542,6 +592,7 @@ export const NativeVideoPlayer = forwardRef<NativeVideoPlayerRef, Props>(
                   <TouchableOpacity
                     style={styles.ctrlBtn}
                     onPress={() => setShowDanmaku((v) => !v)}
+                    hitSlop={CONTROL_HIT_SLOP}
                   >
                     <Ionicons
                       name={showDanmaku ? "chatbubbles" : "chatbubbles-outline"}
@@ -550,7 +601,11 @@ export const NativeVideoPlayer = forwardRef<NativeVideoPlayerRef, Props>(
                     />
                   </TouchableOpacity>
                 )}
-                <TouchableOpacity style={styles.ctrlBtn} onPress={onFullscreen}>
+                <TouchableOpacity
+                  style={styles.ctrlBtn}
+                  onPress={onFullscreen}
+                  hitSlop={CONTROL_HIT_SLOP}
+                >
                   <Ionicons name="expand" size={18} color="#fff" />
                 </TouchableOpacity>
               </View>
@@ -576,6 +631,7 @@ export const NativeVideoPlayer = forwardRef<NativeVideoPlayerRef, Props>(
                     onQualityChange(q.qn);
                     showAndReset();
                   }}
+                  hitSlop={CONTROL_HIT_SLOP}
                 >
                   <Text
                     style={[
@@ -615,6 +671,23 @@ const styles = StyleSheet.create({
     justifyContent: "flex-end",
   },
   topBtn: { padding: 6 },
+  longPressBadge: {
+    position: "absolute",
+    top: 18,
+    alignSelf: "center",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: "rgba(0,174,236,0.88)",
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 999,
+  },
+  longPressText: {
+    color: "#fff",
+    fontSize: 12,
+    fontWeight: "700",
+  },
   centerBtn: {
     position: "absolute",
     top: "50%",
