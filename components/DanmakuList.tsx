@@ -23,6 +23,7 @@ interface Props {
   isLive?: boolean;
   maxItems?: number;
   giftCounts?: Record<string, number>;
+  onExternalScroll?: (offsetY: number) => void;
 }
 
 interface DisplayedDanmaku extends DanmakuItem {
@@ -64,6 +65,7 @@ export default function DanmakuList({
   isLive,
   maxItems = 100,
   giftCounts,
+  onExternalScroll,
 }: Props) {
   const flatListRef = useRef<FlatList>(null);
   const [displayedItems, setDisplayedItems] = useState<DisplayedDanmaku[]>([]);
@@ -194,8 +196,9 @@ export default function DanmakuList({
         contentSize.height - layoutMeasurement.height - contentOffset.y;
       isAtBottomRef.current = distanceFromBottom < 40;
       if (isAtBottomRef.current) setUnseenCount(0);
+      onExternalScroll?.(contentOffset.y);
     },
-    [],
+    [onExternalScroll],
   );
 
   const handleScrollBeginDrag = useCallback(() => {

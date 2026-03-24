@@ -16,9 +16,10 @@ interface Props {
   danmakus?: DanmakuItem[];
   onTimeUpdate?: (t: number) => void;
   webWidth?: number;
+  nativeStyle?: object;
 }
 
-export function VideoPlayer({ playData, qualities, currentQn, onQualityChange, bvid, cid, danmakus, onTimeUpdate, webWidth }: Props) {
+export function VideoPlayer({ playData, qualities, currentQn, onQualityChange, bvid, cid, danmakus, onTimeUpdate, webWidth, nativeStyle }: Props) {
   const [fullscreenMode, setFullscreenMode] = useState<"inline" | "portrait" | "landscape">("inline");
   const [webPaused, setWebPaused] = useState(true);
   const [webCurrentTime, setWebCurrentTime] = useState(0);
@@ -154,6 +155,7 @@ export function VideoPlayer({ playData, qualities, currentQn, onQualityChange, b
         forcePaused={fullscreenMode !== "inline"}
         initialTime={lastTimeRef.current}
         onTimeUpdate={(t) => { lastTimeRef.current = t; onTimeUpdate?.(t); }}
+        style={nativeStyle}
       />
 
       <Modal visible={fullscreenMode !== "inline"} animationType="none" statusBarTranslucent>

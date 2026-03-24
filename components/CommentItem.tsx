@@ -27,13 +27,19 @@ export function CommentItem({ item }: Props) {
 }
 
 const styles = StyleSheet.create({
-  row: { flexDirection: 'row', paddingHorizontal: 16, paddingVertical: 10, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#eee' },
+  row: {
+    flexDirection: 'row',
+    paddingHorizontal: 18,
+    paddingVertical: 12,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: '#e6e6e6'
+  },
   avatar: { width: 34, height: 34, borderRadius: 17, marginRight: 10 },
   content: { flex: 1 },
-  username: { fontSize: 12, color: '#00AEEC', marginBottom: 3 },
-  message: { fontSize: 14, color: '#212121', lineHeight: 20 },
+  username: { fontSize: 12, color: '#1f1f1f', marginBottom: 4, fontWeight: '600' },
+  message: { fontSize: 14, color: '#232323', lineHeight: 21 },
   footer: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 4 },
-  time: { fontSize: 11, color: '#bbb' },
+  time: { fontSize: 11, color: '#9b9b9b' },
   likeRow: { flexDirection: 'row', alignItems: 'center', gap: 2 },
-  likeCount: { fontSize: 11, color: '#999' },
+  likeCount: { fontSize: 11, color: '#8a8a8a' },
 });

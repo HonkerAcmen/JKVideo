@@ -10,6 +10,9 @@ import {
   Platform,
   ScrollView,
   useWindowDimensions,
+  Animated,
+  NativeSyntheticEvent,
+  NativeScrollEvent,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter } from "expo-router";
@@ -31,7 +34,7 @@ type Tab = "intro" | "comments" | "danmaku";
 export default function VideoDetailScreen() {
   const { bvid } = useLocalSearchParams<{ bvid: string }>();
   const router = useRouter();
-  const { width } = useWindowDimensions();
+  const { width, height } = useWindowDimensions();
   const {
     video,
     playData,
@@ -52,11 +55,38 @@ export default function VideoDetailScreen() {
   const [currentTime, setCurrentTime] = useState(0);
   const [showDownload, setShowDownload] = useState(false);
   const isWeb = Platform.OS === "web";
+  const isAndroid = Platform.OS === "android";
   const stats = video?.stat;
   const webShellWidth = Math.min(Math.max(width - 32, 320), 1320);
   const isWideWeb = isWeb && webShellWidth >= 980;
-  const webMainWidth = isWideWeb ? Math.min(webShellWidth * 0.62, 820) : webShellWidth;
-  const webSideWidth = isWideWeb ? Math.max(webShellWidth - webMainWidth - 24, 320) : webShellWidth;
+  const webColumnGap = isWideWeb ? 24 : 0;
+  const webMainWidth = isWideWeb
+    ? Math.floor((webShellWidth - webColumnGap) * 0.7)
+    : webShellWidth;
+  const webSideWidth = isWideWeb
+    ? webShellWidth - webMainWidth - webColumnGap
+    : webShellWidth;
+  const androidAvailableHeight = Math.max(height - 72, 520);
+  const androidExpandedRatio = 0.5;
+  const androidCollapsedRatio = 0.3;
+  const [androidPlayerRatio, setAndroidPlayerRatio] = useState(
+    androidExpandedRatio,
+  );
+  const playerHeightAnim = useRef(
+    new Animated.Value(
+      Math.max(Math.floor(androidAvailableHeight * androidExpandedRatio), 240),
+    ),
+  ).current;
+  const infoHeightAnim = useRef(
+    new Animated.Value(
+      Math.max(
+        androidAvailableHeight -
+          Math.max(Math.floor(androidAvailableHeight * androidExpandedRatio), 240),
+        220,
+      ),
+    ),
+  ).current;
+  const lastLayoutRatioRef = useRef(androidExpandedRatio);
   const {
     videos: relatedVideos,
     loading: relatedLoading,
@@ -75,6 +105,73 @@ export default function VideoDetailScreen() {
     if (!video?.cid) return;
     getDanmaku(video.cid).then(setDanmakus);
   }, [video?.cid]);
+
+  useEffect(() => {
+    if (!isAndroid) return;
+    setAndroidPlayerRatio(androidExpandedRatio);
+    lastLayoutRatioRef.current = androidExpandedRatio;
+    const playerHeight = Math.max(
+      Math.floor(androidAvailableHeight * androidExpandedRatio),
+      240,
+    );
+    playerHeightAnim.setValue(playerHeight);
+    infoHeightAnim.setValue(
+      Math.max(androidAvailableHeight - playerHeight, 220),
+    );
+  }, [
+    androidAvailableHeight,
+    androidExpandedRatio,
+    infoHeightAnim,
+    isAndroid,
+    playerHeightAnim,
+    width,
+  ]);
+
+  const handleInfoScroll = (offsetY: number) => {
+    if (!isAndroid) return;
+    const nextRatio = offsetY > 72 ? androidCollapsedRatio : androidExpandedRatio;
+    if (Math.abs(nextRatio - lastLayoutRatioRef.current) < 0.01) {
+      return;
+    }
+    const nextPlayerHeight = Math.max(
+      Math.floor(androidAvailableHeight * nextRatio),
+      240,
+    );
+    const nextInfoHeight = Math.max(
+      androidAvailableHeight - nextPlayerHeight,
+      220,
+    );
+    setAndroidPlayerRatio(nextRatio);
+    lastLayoutRatioRef.current = nextRatio;
+    Animated.parallel([
+      Animated.spring(playerHeightAnim, {
+        toValue: nextPlayerHeight,
+        damping: 22,
+        stiffness: 180,
+        mass: 0.9,
+        useNativeDriver: false,
+      }),
+      Animated.spring(infoHeightAnim, {
+        toValue: nextInfoHeight,
+        damping: 22,
+        stiffness: 180,
+        mass: 0.9,
+        useNativeDriver: false,
+      }),
+    ]).start();
+  };
+
+  const handleInfoScrollEvent = (
+    e: NativeSyntheticEvent<NativeScrollEvent>,
+  ) => {
+    handleInfoScroll(e.nativeEvent.contentOffset.y);
+  };
+  const androidPlayerHeight = isAndroid
+    ? Math.max(Math.floor(androidAvailableHeight * androidPlayerRatio), 240)
+    : undefined;
+  const androidInfoHeight = isAndroid
+    ? Math.max(androidAvailableHeight - (androidPlayerHeight ?? 0), 220)
+    : undefined;
 
   const handleBack = () => {
     if ((router as any).canGoBack?.()) {
@@ -237,6 +334,8 @@ export default function VideoDetailScreen() {
         data={relatedVideos}
         keyExtractor={(item) => item.bvid}
         showsVerticalScrollIndicator={false}
+        onScroll={isAndroid ? handleInfoScrollEvent : undefined}
+        scrollEventThrottle={16}
         onEndReached={() => {
           if (!relatedLoading) loadRelated();
         }}
@@ -325,6 +424,8 @@ export default function VideoDetailScreen() {
         }}
         onEndReachedThreshold={0.3}
         showsVerticalScrollIndicator={false}
+        onScroll={isAndroid ? handleInfoScrollEvent : undefined}
+        scrollEventThrottle={16}
         ListHeaderComponent={
           <View style={styles.sortRow}>
             <Text style={styles.sortLabel}>排序</Text>
@@ -375,6 +476,7 @@ export default function VideoDetailScreen() {
       visible={tab === "danmaku"}
       onToggle={() => {}}
       hideHeader={true}
+      onExternalScroll={isAndroid ? handleInfoScroll : undefined}
       style={[isWeb ? styles.webDanmakuTab : styles.danmakuTab]}
     />
   );
@@ -430,17 +532,26 @@ export default function VideoDetailScreen() {
       {renderTopBar()}
 
       {/* Video player — fixed 16:9 */}
-      <VideoPlayer
-        playData={playData}
-        qualities={qualities}
-        currentQn={currentQn}
-        onQualityChange={changeQuality}
-        webWidth={isWeb ? Math.min(Math.max(width - 32, 320), 920) : undefined}
-        bvid={bvid as string}
-        cid={video?.cid}
-        danmakus={danmakus}
-        onTimeUpdate={setCurrentTime}
-      />
+      <Animated.View
+        style={
+          isAndroid
+            ? { height: playerHeightAnim, overflow: "hidden" }
+            : null
+        }
+      >
+        <VideoPlayer
+          playData={playData}
+          qualities={qualities}
+          currentQn={currentQn}
+          onQualityChange={changeQuality}
+          webWidth={isWeb ? Math.min(Math.max(width - 32, 320), 920) : undefined}
+          nativeStyle={isAndroid ? ({ height: "100%" } as any) : undefined}
+          bvid={bvid as string}
+          cid={video?.cid}
+          danmakus={danmakus}
+          onTimeUpdate={setCurrentTime}
+        />
+      </Animated.View>
       <DownloadSheet
         visible={showDownload}
         onClose={() => setShowDownload(false)}
@@ -450,7 +561,12 @@ export default function VideoDetailScreen() {
         cover={video?.pic ?? ""}
         qualities={qualities}
       />
-      <View style={styles.mobileInfoShell}>
+      <Animated.View
+        style={[
+          styles.mobileInfoShell,
+          isAndroid ? { height: infoHeightAnim } : null,
+        ]}
+      >
         {renderTabBar()}
 
         {videoLoading ? (
@@ -469,6 +585,7 @@ export default function VideoDetailScreen() {
                   visible={tab === "danmaku"}
                   onToggle={() => {}}
                   hideHeader={true}
+                  onExternalScroll={isAndroid ? handleInfoScroll : undefined}
                   style={[
                     styles.danmakuTab,
                     tab !== "danmaku" && { display: "none" },
@@ -477,7 +594,7 @@ export default function VideoDetailScreen() {
               ))}
           </>
         ) : null}
-      </View>
+      </Animated.View>
     </SafeAreaView>
   );
 }
@@ -567,7 +684,7 @@ function SeasonSection({
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: "#f6f8fb" },
+  safe: { flex: 1, backgroundColor: "#0a0a0a" },
   webDetailShell: {
     flex: 1,
     alignSelf: "center",
@@ -620,13 +737,13 @@ const styles = StyleSheet.create({
   topBar: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: 8,
-    paddingVertical: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: "#eee",
   },
   mobileTopBar: {
-    backgroundColor: "#071019",
+    backgroundColor: "#0a0a0a",
     borderBottomWidth: 0,
   },
   webTopBar: {
@@ -635,92 +752,116 @@ const styles = StyleSheet.create({
     paddingTop: 0,
     borderBottomWidth: 0,
   },
-  backBtn: { padding: 4 },
+  backBtn: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(255,255,255,0.06)",
+  },
   topTitle: {
     flex: 1,
     fontSize: 16,
     fontWeight: "700",
-    marginLeft: 8,
+    marginLeft: 10,
     color: "#17202a",
   },
   mobileTopTitle: {
     color: "#fff",
   },
-  miniBtn: { padding: 4 },
+  miniBtn: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(255,255,255,0.06)",
+  },
   mobileInfoShell: {
     flex: 1,
-    marginTop: -6,
-    backgroundColor: "#f6f8fb",
-    borderTopLeftRadius: 18,
-    borderTopRightRadius: 18,
+    marginTop: -14,
+    backgroundColor: "#f7f7f7",
+    borderTopLeftRadius: 26,
+    borderTopRightRadius: 26,
     overflow: "hidden",
+    borderTopWidth: 1,
+    borderTopColor: "rgba(255,255,255,0.08)",
+    shadowColor: "#000",
+    shadowOpacity: 0.16,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: -8 },
   },
   loader: { marginVertical: 30 },
   titleSection: {
-    paddingHorizontal: 18,
-    paddingVertical: 16,
+    paddingHorizontal: 20,
+    paddingVertical: 20,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: "#eef2f7",
+    borderBottomColor: "#e3e3e3",
   },
   title: {
-    fontSize: 18,
+    fontSize: 20,
     fontWeight: "700",
-    color: "#17202a",
-    lineHeight: 28,
-    marginBottom: 10,
+    color: "#111111",
+    lineHeight: 30,
+    marginBottom: 12,
   },
-  statsRow: { flexDirection: "row", gap: 18, flexWrap: "wrap" },
-  stat: { flexDirection: "row", alignItems: "center", gap: 4 },
-  statText: { fontSize: 12, color: "#738394" },
+  statsRow: { flexDirection: "row", gap: 10, flexWrap: "wrap" },
+  stat: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
+    backgroundColor: "#efefef",
+  },
+  statText: { fontSize: 12, color: "#565656", fontWeight: "500" },
   upRow: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: 18,
+    paddingHorizontal: 20,
     paddingBottom: 0,
-    paddingTop: 18,
+    paddingTop: 22,
   },
-  avatar: { width: 48, height: 48, borderRadius: 30, marginRight: 12 },
-  upName: { flex: 1, fontSize: 15, color: "#17202a", fontWeight: "600" },
+  avatar: { width: 46, height: 46, borderRadius: 23, marginRight: 12 },
+  upName: { flex: 1, fontSize: 15, color: "#111111", fontWeight: "600" },
   followBtn: {
-    backgroundColor: "#00AEEC",
-    paddingHorizontal: 12,
-    paddingVertical: 6,
+    backgroundColor: "#161616",
+    paddingHorizontal: 16,
+    paddingVertical: 9,
     borderRadius: 999,
-    shadowColor: "#00AEEC",
-    shadowOpacity: 0.22,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 4 },
   },
-  followTxt: { color: "#fff", fontSize: 12, fontWeight: "500" },
+  followTxt: { color: "#ffffff", fontSize: 12, fontWeight: "600" },
   seasonBox: {
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: "#eef2f7",
-    paddingVertical: 12,
+    borderTopColor: "#e3e3e3",
+    paddingVertical: 14,
   },
   seasonHeader: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: 14,
-    paddingBottom: 8,
+    paddingHorizontal: 18,
+    paddingBottom: 10,
     gap: 4,
   },
-  seasonTitle: { flex: 1, fontSize: 14, fontWeight: "700", color: "#17202a" },
-  seasonCount: { fontSize: 12, color: "#738394" },
+  seasonTitle: { flex: 1, fontSize: 14, fontWeight: "700", color: "#111111" },
+  seasonCount: { fontSize: 12, color: "#7a7a7a" },
   epCard: {
     width: 120,
-    borderRadius: 10,
+    borderRadius: 14,
     overflow: "hidden",
-    backgroundColor: "#f8fbff",
+    backgroundColor: "#ffffff",
     borderWidth: 1,
-    borderColor: "#e6edf5",
+    borderColor: "#e6e6e6",
   },
-  epCardActive: { borderColor: "#00AEEC", backgroundColor: "#eefaff" },
+  epCardActive: { borderColor: "#1a1a1a", backgroundColor: "#f2f2f2" },
   epThumb: { width: 120, height: 68, backgroundColor: "#eee" },
   epNum: { fontSize: 11, color: "#999", paddingHorizontal: 6, paddingTop: 4 },
-  epNumActive: { color: "#00AEEC", fontWeight: "600" },
+  epNumActive: { color: "#111111", fontWeight: "700" },
   epTitle: {
     fontSize: 12,
-    color: "#333",
+    color: "#222222",
     paddingHorizontal: 6,
     paddingBottom: 6,
     lineHeight: 16,
@@ -728,8 +869,10 @@ const styles = StyleSheet.create({
   tabBar: {
     flexDirection: "row",
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: "#e9eef5",
-    backgroundColor: "#fbfcfe",
+    borderBottomColor: "#e5e5e5",
+    backgroundColor: "#f7f7f7",
+    paddingHorizontal: 8,
+    paddingTop: 6,
   },
   webTabBar: {
     paddingHorizontal: 10,
@@ -737,46 +880,46 @@ const styles = StyleSheet.create({
   tabItem: {
     flex: 1,
     alignItems: "center",
-    paddingVertical: 14,
+    paddingVertical: 12,
     position: "relative",
   },
-  tabLabel: { fontSize: 13, color: "#738394", fontWeight: "500" },
-  tabActive: { color: "#00AEEC", fontWeight: "700" },
+  tabLabel: { fontSize: 13, color: "#777777", fontWeight: "500" },
+  tabActive: { color: "#111111", fontWeight: "700" },
   tabUnderline: {
     position: "absolute",
-    bottom: 3,
-    width: 28,
+    bottom: 2,
+    width: 24,
     height: 3,
-    backgroundColor: "#00AEEC",
+    backgroundColor: "#111111",
     borderRadius: 999,
   },
   tabScroll: { flex: 1 },
-  descBox: { paddingHorizontal: 18, paddingVertical: 18 },
-  descText: { fontSize: 14, color: "#47586a", lineHeight: 24 },
+  descBox: { paddingHorizontal: 20, paddingVertical: 18 },
+  descText: { fontSize: 14, color: "#4a4a4a", lineHeight: 24 },
   danmakuTab: { flex: 1 },
   webDanmakuTab: {
     height: 720,
   },
-  emptyTxt: { textAlign: "center", color: "#99a6b2", padding: 30 },
+  emptyTxt: { textAlign: "center", color: "#8b8b8b", padding: 30 },
   relatedHeader: {
-    paddingHorizontal: 18,
-    paddingVertical: 12,
+    paddingHorizontal: 20,
+    paddingVertical: 14,
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: "#eef2f7",
-    backgroundColor: "#f7f9fc",
+    borderTopColor: "#e5e5e5",
+    backgroundColor: "#f1f1f1",
   },
   relatedHeaderText: {
     fontSize: 14,
     fontWeight: "600" as const,
-    color: "#17202a",
+    color: "#111111",
   },
   relatedCard: {
     flexDirection: "row",
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    backgroundColor: "#fff",
+    paddingHorizontal: 18,
+    paddingVertical: 13,
+    backgroundColor: "#f9f9f9",
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: "#eef2f7",
+    borderBottomColor: "#e6e6e6",
     gap: 12,
   },
   webRelatedCard: {
@@ -786,7 +929,7 @@ const styles = StyleSheet.create({
     position: "relative",
     width: 120,
     height: 68,
-    borderRadius: 8,
+    borderRadius: 10,
     overflow: "hidden",
     backgroundColor: "#eee",
     flexShrink: 0,
@@ -805,50 +948,50 @@ const styles = StyleSheet.create({
   relatedInfo: {
     flex: 1,
     justifyContent: "space-between",
-    paddingVertical: 2,
+    paddingVertical: 3,
   },
   relatedMetaRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
   },
-  relatedTitle: { fontSize: 13, color: "#17202a", lineHeight: 19, fontWeight: "500" },
-  relatedOwner: { fontSize: 12, color: "#738394" },
-  relatedView: { fontSize: 11, color: "#9aa8b5" },
+  relatedTitle: { fontSize: 13, color: "#191919", lineHeight: 19, fontWeight: "500" },
+  relatedOwner: { fontSize: 12, color: "#6f6f6f" },
+  relatedView: { fontSize: 11, color: "#959595" },
   sortRow: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: 18,
-    paddingVertical: 12,
+    paddingHorizontal: 20,
+    paddingVertical: 14,
     gap: 8,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: "#eef2f7",
-    backgroundColor: "#fbfcfe",
+    borderBottomColor: "#e5e5e5",
+    backgroundColor: "#f5f5f5",
   },
-  sortLabel: { fontSize: 13, color: "#738394", marginRight: 4 },
+  sortLabel: { fontSize: 13, color: "#707070", marginRight: 4 },
   sortBtn: {
     paddingHorizontal: 14,
     paddingVertical: 5,
     borderRadius: 999,
     borderWidth: 1,
-    borderColor: "#d8e2ec",
-    backgroundColor: "#fff",
+    borderColor: "#d5d5d5",
+    backgroundColor: "#ffffff",
   },
-  sortBtnActive: { borderColor: "#00AEEC", backgroundColor: "#e8f7fd" },
-  sortBtnTxt: { fontSize: 12, color: "#607181" },
-  sortBtnTxtActive: { color: "#00AEEC", fontWeight: "600" as const },
+  sortBtnActive: { borderColor: "#1a1a1a", backgroundColor: "#ededed" },
+  sortBtnTxt: { fontSize: 12, color: "#666666" },
+  sortBtnTxtActive: { color: "#111111", fontWeight: "600" as const },
   webLoadMore: {
     alignSelf: "center",
     marginTop: 14,
     borderWidth: 1,
-    borderColor: "#bde9fb",
-    backgroundColor: "#f3fbff",
+    borderColor: "#d2d2d2",
+    backgroundColor: "#ffffff",
     paddingHorizontal: 18,
     paddingVertical: 11,
     borderRadius: 999,
   },
   webLoadMoreText: {
-    color: "#00AEEC",
+    color: "#111111",
     fontSize: 13,
     fontWeight: "600",
   },
