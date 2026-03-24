@@ -17,7 +17,7 @@ app.use((req, res, next) => {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader(
     "Access-Control-Allow-Headers",
-    "Content-Type, X-Buvid3, X-Sessdata",
+    "Content-Type, X-Buvid3, X-Sessdata, Range",
   );
   res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
   if (req.method === "OPTIONS") return res.sendStatus(200);
@@ -70,9 +70,74 @@ function makeProxy(targetHost) {
   };
 }
 
+function proxyAbsoluteUrl(req, res, rawUrl) {
+  let target;
+  try {
+    target = new URL(rawUrl);
+  } catch {
+    res.status(400).json({ error: "invalid media url" });
+    return;
+  }
+
+  if (target.protocol !== "https:") {
+    res.status(400).json({ error: "only https media urls are supported" });
+    return;
+  }
+
+  const options = {
+    hostname: target.hostname,
+    path: `${target.pathname}${target.search}`,
+    method: "GET",
+    headers: {
+      Referer: "https://www.bilibili.com",
+      Origin: "https://www.bilibili.com",
+      "User-Agent":
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36",
+      Accept: "*/*",
+      "Accept-Language": "zh-CN,zh;q=0.9",
+      "Accept-Encoding": "identity",
+      ...(req.headers.range ? { Range: req.headers.range } : {}),
+    },
+  };
+
+  const proxy = https.request(options, (proxyRes) => {
+    const headers = {
+      "Content-Type": proxyRes.headers["content-type"] || "video/mp4",
+      "Accept-Ranges": proxyRes.headers["accept-ranges"] || "bytes",
+    };
+
+    if (proxyRes.headers["content-length"]) {
+      headers["Content-Length"] = proxyRes.headers["content-length"];
+    }
+    if (proxyRes.headers["content-range"]) {
+      headers["Content-Range"] = proxyRes.headers["content-range"];
+    }
+    if (proxyRes.headers.etag) {
+      headers.ETag = proxyRes.headers.etag;
+    }
+    if (proxyRes.headers["last-modified"]) {
+      headers["Last-Modified"] = proxyRes.headers["last-modified"];
+    }
+
+    res.writeHead(proxyRes.statusCode || 200, headers);
+    proxyRes.pipe(res);
+  });
+
+  proxy.on("error", (err) => res.status(502).json({ error: err.message }));
+  proxy.end();
+}
+
 app.use("/bilibili-api", makeProxy("api.bilibili.com"));
 app.use("/bilibili-passport", makeProxy("passport.bilibili.com"));
 app.use("/bilibili-live", makeProxy("api.live.bilibili.com"));
+
+app.get("/bilibili-media", (req, res) => {
+  const url = req.query.url;
+  if (typeof url !== "string" || !url) {
+    return res.status(400).json({ error: "missing media url" });
+  }
+  proxyAbsoluteUrl(req, res, url);
+});
 
 // Dedicated comment proxy: buffer response and decompress by magic bytes (not Content-Encoding header)
 app.use("/bilibili-comment", (req, res) => {
