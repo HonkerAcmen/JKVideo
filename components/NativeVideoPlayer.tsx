@@ -11,8 +11,6 @@ import {
   View,
   StyleSheet,
   TouchableOpacity,
-  TouchableWithoutFeedback,
-  Pressable,
   Text,
   Modal,
   Image,
@@ -40,6 +38,11 @@ const HIDE_DELAY = 3000;
 const CONTROL_HIT_SLOP = { top: 10, bottom: 10, left: 10, right: 10 };
 const LONG_PRESS_RATE = 2;
 const LONG_PRESS_DELAY = 260;
+const TWO_FINGER_SWIPE_THRESHOLD = 42;
+const MULTI_TAP_MAX_DURATION = 320;
+const MULTI_TAP_MAX_MOVEMENT = 36;
+const MULTI_DOUBLE_TAP_INTERVAL = 420;
+const TAP_MOVE_THRESHOLD = 10;
 
 const HEADERS = {
   Referer: "https://www.bilibili.com",
@@ -67,6 +70,8 @@ export interface NativeVideoPlayerRef {
   setPaused: (v: boolean) => void;
 }
 
+type FullscreenMode = "inline" | "portrait" | "landscape";
+
 interface Props {
   playData: PlayUrlResponse | null;
   qualities: { qn: number; desc: string }[];
@@ -78,9 +83,12 @@ interface Props {
   cid?: number;
   danmakus?: DanmakuItem[];
   isFullscreen?: boolean;
+  fullscreenMode?: FullscreenMode;
   onTimeUpdate?: (t: number) => void;
   initialTime?: number;
   forcePaused?: boolean;
+  onEnterPortraitFullscreen?: () => void;
+  onRotateToLandscape?: () => void;
 }
 
 export const NativeVideoPlayer = forwardRef<NativeVideoPlayerRef, Props>(
@@ -96,9 +104,12 @@ export const NativeVideoPlayer = forwardRef<NativeVideoPlayerRef, Props>(
       cid,
       danmakus,
       isFullscreen,
+      fullscreenMode = "inline",
       onTimeUpdate,
       initialTime,
       forcePaused,
+      onEnterPortraitFullscreen,
+      onRotateToLandscape,
     }: Props,
     ref,
   ) {
@@ -135,6 +146,20 @@ export const NativeVideoPlayer = forwardRef<NativeVideoPlayerRef, Props>(
 
     const videoRef = useRef<VideoRef>(null);
     const longPressTriggeredRef = useRef(false);
+    const twoFingerStartYRef = useRef<number | null>(null);
+    const twoFingerStartXRef = useRef<number | null>(null);
+    const twoFingerStartTimeRef = useRef<number | null>(null);
+    const twoFingerMaxOffsetRef = useRef(0);
+    const twoFingerMinDeltaYRef = useRef(0);
+    const twoFingerMaxDeltaYRef = useRef(0);
+    const twoFingerTriggeredRef = useRef(false);
+    const gestureTouchCountRef = useRef(0);
+    const lastThreeFingerTapAtRef = useRef<number | null>(null);
+    const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const singleTouchMovedRef = useRef(false);
+    const singleTouchStartXRef = useRef<number | null>(null);
+    const singleTouchStartYRef = useRef<number | null>(null);
+    const maxGestureTouchCountRef = useRef(0);
 
     useImperativeHandle(ref, () => ({
       seek: (t: number) => {
@@ -227,21 +252,248 @@ export const NativeVideoPlayer = forwardRef<NativeVideoPlayerRef, Props>(
       resetHideTimer();
     }, [resetHideTimer]);
 
+    const clearLongPressTimer = useCallback(() => {
+      if (longPressTimerRef.current) {
+        clearTimeout(longPressTimerRef.current);
+        longPressTimerRef.current = null;
+      }
+    }, []);
+
+    const resetTwoFingerGesture = useCallback(() => {
+      twoFingerStartYRef.current = null;
+      twoFingerStartXRef.current = null;
+      twoFingerStartTimeRef.current = null;
+      twoFingerMaxOffsetRef.current = 0;
+      twoFingerMinDeltaYRef.current = 0;
+      twoFingerMaxDeltaYRef.current = 0;
+      twoFingerTriggeredRef.current = false;
+      gestureTouchCountRef.current = 0;
+      maxGestureTouchCountRef.current = 0;
+    }, []);
+
+    const handleSurfaceTouchStart = useCallback(
+      (e: any) => {
+        const touches = e.nativeEvent.touches ?? [];
+        gestureTouchCountRef.current = touches.length;
+        maxGestureTouchCountRef.current = Math.max(
+          maxGestureTouchCountRef.current,
+          touches.length,
+        );
+        if (touches.length === 1) {
+          const touch = touches[0];
+          singleTouchMovedRef.current = false;
+          singleTouchStartXRef.current = touch.pageX;
+          singleTouchStartYRef.current = touch.pageY;
+          clearLongPressTimer();
+          if (!paused && !forcePaused) {
+            longPressTimerRef.current = setTimeout(() => {
+              handleLongPress();
+            }, LONG_PRESS_DELAY);
+          }
+        } else if (touches.length >= 2) {
+          clearLongPressTimer();
+          const avgX = (touches[0].pageX + touches[1].pageX) / 2;
+          const avgY = (touches[0].pageY + touches[1].pageY) / 2;
+          twoFingerStartXRef.current = avgX;
+          twoFingerStartYRef.current = avgY;
+          twoFingerStartTimeRef.current = Date.now();
+          twoFingerMaxOffsetRef.current = 0;
+          twoFingerMinDeltaYRef.current = 0;
+          twoFingerMaxDeltaYRef.current = 0;
+          twoFingerTriggeredRef.current = false;
+        } else {
+          clearLongPressTimer();
+          resetTwoFingerGesture();
+        }
+      },
+      [
+        clearLongPressTimer,
+        forcePaused,
+        handleLongPress,
+        paused,
+        resetTwoFingerGesture,
+      ],
+    );
+
+    const handleSurfaceTouchMove = useCallback(
+      (e: any) => {
+        const touches = e.nativeEvent.touches ?? [];
+        gestureTouchCountRef.current = touches.length;
+        maxGestureTouchCountRef.current = Math.max(
+          maxGestureTouchCountRef.current,
+          touches.length,
+        );
+        if (touches.length === 1) {
+          const touch = touches[0];
+          if (
+            singleTouchStartXRef.current !== null &&
+            singleTouchStartYRef.current !== null
+          ) {
+            const dx = touch.pageX - singleTouchStartXRef.current;
+            const dy = touch.pageY - singleTouchStartYRef.current;
+            if (Math.hypot(dx, dy) > TAP_MOVE_THRESHOLD) {
+              singleTouchMovedRef.current = true;
+              clearLongPressTimer();
+            }
+          }
+          return;
+        }
+        clearLongPressTimer();
+        if (touches.length >= 2) {
+          const avgX = (touches[0].pageX + touches[1].pageX) / 2;
+          const avgY = (touches[0].pageY + touches[1].pageY) / 2;
+          if (
+            twoFingerStartYRef.current === null ||
+            twoFingerStartXRef.current === null
+          ) {
+            twoFingerStartXRef.current = avgX;
+            twoFingerStartYRef.current = avgY;
+            if (twoFingerStartTimeRef.current === null) {
+              twoFingerStartTimeRef.current = Date.now();
+            }
+            twoFingerMaxOffsetRef.current = 0;
+            twoFingerMinDeltaYRef.current = 0;
+            twoFingerMaxDeltaYRef.current = 0;
+            return;
+          }
+          if (twoFingerTriggeredRef.current) {
+            return;
+          }
+          const deltaX = avgX - twoFingerStartXRef.current;
+          const deltaY = avgY - twoFingerStartYRef.current;
+          const distance = Math.hypot(deltaX, deltaY);
+          twoFingerMaxOffsetRef.current = Math.max(
+            twoFingerMaxOffsetRef.current,
+            distance,
+          );
+          twoFingerMinDeltaYRef.current = Math.min(
+            twoFingerMinDeltaYRef.current,
+            deltaY,
+          );
+          twoFingerMaxDeltaYRef.current = Math.max(
+            twoFingerMaxDeltaYRef.current,
+            deltaY,
+          );
+
+          if (
+            !isFullscreen &&
+            onEnterPortraitFullscreen &&
+            twoFingerMaxDeltaYRef.current > TWO_FINGER_SWIPE_THRESHOLD
+          ) {
+            twoFingerTriggeredRef.current = true;
+            onEnterPortraitFullscreen();
+          } else if (
+            isFullscreen &&
+            twoFingerMinDeltaYRef.current < -TWO_FINGER_SWIPE_THRESHOLD
+          ) {
+            twoFingerTriggeredRef.current = true;
+            onFullscreen();
+          }
+        } else if (touches.length < 2) {
+          twoFingerStartYRef.current = null;
+          twoFingerStartXRef.current = null;
+        }
+      },
+      [clearLongPressTimer, isFullscreen, onEnterPortraitFullscreen, onFullscreen],
+    );
+
+    const handleSurfaceTouchEnd = useCallback((e?: any) => {
+      const remainingTouches = e?.nativeEvent?.touches?.length ?? 0;
+      if (remainingTouches > 0) {
+        gestureTouchCountRef.current = remainingTouches;
+        maxGestureTouchCountRef.current = Math.max(
+          maxGestureTouchCountRef.current,
+          remainingTouches,
+        );
+        return;
+      }
+      clearLongPressTimer();
+      const now = Date.now();
+      const startedAt = twoFingerStartTimeRef.current;
+      const shouldEnterPortraitFullscreen =
+        !isFullscreen &&
+        !!onEnterPortraitFullscreen &&
+        !twoFingerTriggeredRef.current &&
+        twoFingerMaxDeltaYRef.current > TWO_FINGER_SWIPE_THRESHOLD;
+      const shouldExitFullscreen =
+        isFullscreen &&
+        !twoFingerTriggeredRef.current &&
+        twoFingerMinDeltaYRef.current < -TWO_FINGER_SWIPE_THRESHOLD;
+      const isThreeFingerTap =
+        isFullscreen &&
+        !!danmakus?.length &&
+        !twoFingerTriggeredRef.current &&
+        !shouldExitFullscreen &&
+        maxGestureTouchCountRef.current >= 3 &&
+        startedAt !== null &&
+        now - startedAt <= MULTI_TAP_MAX_DURATION &&
+        twoFingerMaxOffsetRef.current <= MULTI_TAP_MAX_MOVEMENT;
+
+      if (shouldEnterPortraitFullscreen) {
+        twoFingerTriggeredRef.current = true;
+        onEnterPortraitFullscreen?.();
+        lastThreeFingerTapAtRef.current = null;
+      } else if (shouldExitFullscreen) {
+        twoFingerTriggeredRef.current = true;
+        onFullscreen();
+        lastThreeFingerTapAtRef.current = null;
+      } else if (isThreeFingerTap) {
+        const lastTapAt = lastThreeFingerTapAtRef.current;
+        if (
+          lastTapAt !== null &&
+          now - lastTapAt <= MULTI_DOUBLE_TAP_INTERVAL
+        ) {
+          lastThreeFingerTapAtRef.current = null;
+          setShowDanmaku((prev) => !prev);
+          setShowControls(true);
+          resetHideTimer();
+        } else {
+          lastThreeFingerTapAtRef.current = now;
+        }
+      } else {
+        lastThreeFingerTapAtRef.current = null;
+        if (
+          gestureTouchCountRef.current <= 1 &&
+          !singleTouchMovedRef.current &&
+          !longPressTriggeredRef.current
+        ) {
+          handleTap();
+        }
+      }
+      if (longPressTriggeredRef.current) {
+        handlePressOut();
+      }
+      singleTouchStartXRef.current = null;
+      singleTouchStartYRef.current = null;
+      singleTouchMovedRef.current = false;
+      resetTwoFingerGesture();
+    }, [
+      clearLongPressTimer,
+      danmakus?.length,
+      handlePressOut,
+      handleTap,
+      isFullscreen,
+      resetHideTimer,
+      resetTwoFingerGesture,
+    ]);
+
     useEffect(() => {
       if (paused || forcePaused) {
+        clearLongPressTimer();
         longPressTriggeredRef.current = false;
         setIsLongPressing(false);
         setPlaybackRate(1);
       }
-    }, [paused, forcePaused]);
+    }, [clearLongPressTimer, paused, forcePaused]);
 
     // 组件卸载时清理隐藏计时器，避免内存泄漏和潜在的状态更新错误。依赖项为空数组确保只在挂载和卸载时执行一次。
     useEffect(() => {
       resetHideTimer();
       return () => {
+        clearLongPressTimer();
         if (hideTimer.current) clearTimeout(hideTimer.current);
       };
-    }, []);
+    }, [clearLongPressTimer, resetHideTimer]);
 
     const measureTrack = useCallback(() => {
       trackRef.current?.measureInWindow((x, _y, w) => {
@@ -467,15 +719,43 @@ export const NativeVideoPlayer = forwardRef<NativeVideoPlayerRef, Props>(
           />
         )}
 
-        <Pressable
+        {isFullscreen && !!danmakus?.length && (
+          <TouchableOpacity
+            style={[
+              styles.danmakuFab,
+              showDanmaku ? styles.danmakuFabActive : styles.danmakuFabMuted,
+            ]}
+            onPress={() => {
+              setShowDanmaku((prev) => !prev);
+              setShowControls(true);
+              resetHideTimer();
+            }}
+            hitSlop={CONTROL_HIT_SLOP}
+          >
+            <Ionicons
+              name={showDanmaku ? "chatbubbles" : "chatbubbles-outline"}
+              size={17}
+              color={showDanmaku ? "#0A5C91" : "#6B7C8F"}
+            />
+            <Text
+              style={[
+                styles.danmakuFabText,
+                showDanmaku
+                  ? styles.danmakuFabTextActive
+                  : styles.danmakuFabTextMuted,
+              ]}
+            >
+              {showDanmaku ? "弹幕开" : "弹幕关"}
+            </Text>
+          </TouchableOpacity>
+        )}
+
+        <View
           style={StyleSheet.absoluteFill}
-          onPress={() => {
-            if (longPressTriggeredRef.current) return;
-            handleTap();
-          }}
-          onLongPress={handleLongPress}
-          onPressOut={handlePressOut}
-          delayLongPress={LONG_PRESS_DELAY}
+          onTouchStart={handleSurfaceTouchStart}
+          onTouchMove={handleSurfaceTouchMove}
+          onTouchEnd={handleSurfaceTouchEnd}
+          onTouchCancel={handleSurfaceTouchEnd}
         />
 
         {isLongPressing && (
@@ -601,12 +881,25 @@ export const NativeVideoPlayer = forwardRef<NativeVideoPlayerRef, Props>(
                     />
                   </TouchableOpacity>
                 )}
+                {fullscreenMode === "portrait" && onRotateToLandscape && (
+                  <TouchableOpacity
+                    style={styles.ctrlBtn}
+                    onPress={onRotateToLandscape}
+                    hitSlop={CONTROL_HIT_SLOP}
+                  >
+                    <Ionicons name="phone-landscape" size={18} color="#fff" />
+                  </TouchableOpacity>
+                )}
                 <TouchableOpacity
                   style={styles.ctrlBtn}
                   onPress={onFullscreen}
                   hitSlop={CONTROL_HIT_SLOP}
                 >
-                  <Ionicons name="expand" size={18} color="#fff" />
+                  <Ionicons
+                    name={isFullscreen ? "contract" : "expand"}
+                    size={18}
+                    color="#fff"
+                  />
                 </TouchableOpacity>
               </View>
             </LinearGradient>
@@ -798,4 +1091,35 @@ const styles = StyleSheet.create({
   },
   qualityItemText: { fontSize: 14, color: "#333" },
   qualityItemActive: { color: "#00AEEC", fontWeight: "700" },
+  danmakuFab: {
+    position: "absolute",
+    top: 18,
+    right: 16,
+    zIndex: 8,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderWidth: 1,
+  },
+  danmakuFabActive: {
+    backgroundColor: "rgba(234,247,255,0.94)",
+    borderColor: "rgba(0,174,236,0.34)",
+  },
+  danmakuFabMuted: {
+    backgroundColor: "rgba(242,246,250,0.94)",
+    borderColor: "rgba(107,124,143,0.24)",
+  },
+  danmakuFabText: {
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  danmakuFabTextActive: {
+    color: "#0A5C91",
+  },
+  danmakuFabTextMuted: {
+    color: "#6B7C8F",
+  },
 });

@@ -19,7 +19,7 @@ interface Props {
 }
 
 export function VideoPlayer({ playData, qualities, currentQn, onQualityChange, bvid, cid, danmakus, onTimeUpdate, webWidth }: Props) {
-  const [fullscreen, setFullscreen] = useState(false);
+  const [fullscreenMode, setFullscreenMode] = useState<"inline" | "portrait" | "landscape">("inline");
   const [webPaused, setWebPaused] = useState(true);
   const [webCurrentTime, setWebCurrentTime] = useState(0);
   const [webDuration, setWebDuration] = useState(0);
@@ -32,7 +32,7 @@ export function VideoPlayer({ playData, qualities, currentQn, onQualityChange, b
       ? (webWidth && webWidth > 0 ? webWidth : webContainerWidth > 0 ? webContainerWidth : width)
       : width;
   const VIDEO_HEIGHT = playerWidth * 0.5625;
-  const needsRotation = !ScreenOrientation && fullscreen;
+  const needsRotation = !ScreenOrientation && fullscreenMode === "landscape";
   const lastTimeRef = useRef(0);
   const portraitRef = useRef<NativeVideoPlayerRef>(null);
   const webVideoRef = useRef<HTMLVideoElement | null>(null);
@@ -49,19 +49,33 @@ export function VideoPlayer({ playData, qualities, currentQn, onQualityChange, b
     return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
   };
 
-  const handleEnterFullscreen = async () => {
-    if (Platform.OS !== 'web')
-      await ScreenOrientation?.lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE_RIGHT);
-    setFullscreen(true);
+  const handleEnterPortraitFullscreen = async () => {
+    if (Platform.OS !== "web") {
+      await ScreenOrientation?.lockAsync(
+        ScreenOrientation.OrientationLock.PORTRAIT_UP,
+      );
+    }
+    setFullscreenMode("portrait");
+  };
+
+  const handleRotateToLandscape = async () => {
+    if (Platform.OS !== "web") {
+      await ScreenOrientation?.lockAsync(
+        ScreenOrientation.OrientationLock.LANDSCAPE_RIGHT,
+      );
+    }
+    setFullscreenMode("landscape");
   };
 
   const handleExitFullscreen = async () => {
-    // 退出全屏：同步进度，竖屏一律暂停
     portraitRef.current?.seek(lastTimeRef.current);
     portraitRef.current?.setPaused(true);
-    setFullscreen(false);
-    if (Platform.OS !== 'web')
-      await ScreenOrientation?.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP);
+    setFullscreenMode("inline");
+    if (Platform.OS !== "web") {
+      await ScreenOrientation?.lockAsync(
+        ScreenOrientation.OrientationLock.PORTRAIT_UP,
+      );
+    }
   };
 
   useEffect(() => {
@@ -130,16 +144,19 @@ export function VideoPlayer({ playData, qualities, currentQn, onQualityChange, b
         qualities={qualities}
         currentQn={currentQn}
         onQualityChange={onQualityChange}
-        onFullscreen={handleEnterFullscreen}
+        onFullscreen={handleEnterPortraitFullscreen}
+        onEnterPortraitFullscreen={handleEnterPortraitFullscreen}
+        onRotateToLandscape={handleRotateToLandscape}
         bvid={bvid}
         cid={cid}
+        fullscreenMode="inline"
         isFullscreen={false}
-        forcePaused={fullscreen}
+        forcePaused={fullscreenMode !== "inline"}
         initialTime={lastTimeRef.current}
         onTimeUpdate={(t) => { lastTimeRef.current = t; onTimeUpdate?.(t); }}
       />
 
-      <Modal visible={fullscreen} animationType="none" statusBarTranslucent>
+      <Modal visible={fullscreenMode !== "inline"} animationType="none" statusBarTranslucent>
         <StatusBar hidden />
         <View style={{ flex: 1, backgroundColor: '#000', justifyContent: 'center', alignItems: 'center' }}>
           <View style={needsRotation
@@ -152,10 +169,13 @@ export function VideoPlayer({ playData, qualities, currentQn, onQualityChange, b
               currentQn={currentQn}
               onQualityChange={onQualityChange}
               onFullscreen={handleExitFullscreen}
+              onEnterPortraitFullscreen={handleEnterPortraitFullscreen}
+              onRotateToLandscape={handleRotateToLandscape}
               bvid={bvid}
               cid={cid}
               danmakus={danmakus}
               isFullscreen={true}
+              fullscreenMode={fullscreenMode}
               initialTime={lastTimeRef.current}
               onTimeUpdate={(t) => { lastTimeRef.current = t; onTimeUpdate?.(t); }}
               style={needsRotation ? { width: height, height: width } : { flex: 1 }}

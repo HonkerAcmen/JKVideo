@@ -85,18 +85,31 @@ export default function VideoDetailScreen() {
   };
 
   const renderTopBar = () => (
-    <View style={[styles.topBar, isWeb && styles.webTopBar]}>
+    <View
+      style={[
+        styles.topBar,
+        isWeb ? styles.webTopBar : styles.mobileTopBar,
+      ]}
+    >
       <TouchableOpacity onPress={handleBack} style={styles.backBtn}>
-        <Ionicons name="chevron-back" size={24} color="#212121" />
+        <Ionicons
+          name="chevron-back"
+          size={24}
+          color={isWeb ? "#212121" : "#fff"}
+        />
       </TouchableOpacity>
-      <Text style={styles.topTitle} numberOfLines={1}>
+      <Text style={[styles.topTitle, !isWeb && styles.mobileTopTitle]} numberOfLines={1}>
         {video?.title ?? "视频详情"}
       </Text>
       <TouchableOpacity
         style={styles.miniBtn}
         onPress={() => setShowDownload(true)}
       >
-        <Ionicons name="cloud-download-outline" size={22} color="#212121" />
+        <Ionicons
+          name="cloud-download-outline"
+          size={22}
+          color={isWeb ? "#212121" : "#fff"}
+        />
       </TouchableOpacity>
     </View>
   );
@@ -437,35 +450,34 @@ export default function VideoDetailScreen() {
         cover={video?.pic ?? ""}
         qualities={qualities}
       />
+      <View style={styles.mobileInfoShell}>
+        {renderTabBar()}
 
-      {/* TabBar — sits directly below player, always visible once video loads */}
-      {renderTabBar()}
-
-      {/* Tab content */}
-      {videoLoading ? (
-        <ActivityIndicator style={styles.loader} color="#00AEEC" />
-      ) : video ? (
-        <>
-          {tab === "intro" && renderIntroContent()}
-          {tab === "comments" && renderCommentsContent()}
-          {tab === "danmaku" &&
-            (isWeb ? (
-              renderDanmakuContent()
-            ) : (
-              <DanmakuList
-                danmakus={danmakus}
-                currentTime={currentTime}
-                visible={tab === "danmaku"}
-                onToggle={() => {}}
-                hideHeader={true}
-                style={[
-                  styles.danmakuTab,
-                  tab !== "danmaku" && { display: "none" },
-                ]}
-              />
-            ))}
-        </>
-      ) : null}
+        {videoLoading ? (
+          <ActivityIndicator style={styles.loader} color="#00AEEC" />
+        ) : video ? (
+          <>
+            {tab === "intro" && renderIntroContent()}
+            {tab === "comments" && renderCommentsContent()}
+            {tab === "danmaku" &&
+              (isWeb ? (
+                renderDanmakuContent()
+              ) : (
+                <DanmakuList
+                  danmakus={danmakus}
+                  currentTime={currentTime}
+                  visible={tab === "danmaku"}
+                  onToggle={() => {}}
+                  hideHeader={true}
+                  style={[
+                    styles.danmakuTab,
+                    tab !== "danmaku" && { display: "none" },
+                  ]}
+                />
+              ))}
+          </>
+        ) : null}
+      </View>
     </SafeAreaView>
   );
 }
@@ -613,6 +625,10 @@ const styles = StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: "#eee",
   },
+  mobileTopBar: {
+    backgroundColor: "#071019",
+    borderBottomWidth: 0,
+  },
   webTopBar: {
     marginBottom: 16,
     paddingHorizontal: 0,
@@ -627,7 +643,18 @@ const styles = StyleSheet.create({
     marginLeft: 8,
     color: "#17202a",
   },
+  mobileTopTitle: {
+    color: "#fff",
+  },
   miniBtn: { padding: 4 },
+  mobileInfoShell: {
+    flex: 1,
+    marginTop: -6,
+    backgroundColor: "#f6f8fb",
+    borderTopLeftRadius: 18,
+    borderTopRightRadius: 18,
+    overflow: "hidden",
+  },
   loader: { marginVertical: 30 },
   titleSection: {
     paddingHorizontal: 18,
