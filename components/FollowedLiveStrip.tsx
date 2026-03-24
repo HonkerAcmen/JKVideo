@@ -62,9 +62,9 @@ export function FollowedLiveStrip() {
 
 const styles = StyleSheet.create({
   container: {
-    backgroundColor: "#f4f4f4",
-    paddingHorizontal: 12,
-    paddingVertical: 8,
+    backgroundColor: "#f5f5f5",
+    paddingHorizontal: 14,
+    paddingVertical: 10,
   },
   scrollContent: {
     gap: 12,
@@ -72,32 +72,32 @@ const styles = StyleSheet.create({
   },
   item: {
     alignItems: "center",
-    width: 56,
+    width: 60,
     position: "relative",
   },
   pulseRow: {
     position: "absolute",
-    backgroundColor: "rgba(0,0,0,0.6)",
-    bottom: 18,
-    paddingHorizontal: 6,
-    paddingVertical: 1,
-    borderRadius: 10,
+    backgroundColor: "rgba(17,17,17,0.86)",
+    bottom: 20,
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: 999,
     zIndex: 100,
     display: "flex",
     flexDirection: "row",
     alignItems: "center",
   },
   avatar: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
     backgroundColor: "#eee",
   },
   name: {
     fontSize: 11,
     color: "#333",
-    marginTop: 4,
+    marginTop: 6,
     textAlign: "center",
-    width: 56,
+    width: 60,
   },
 });

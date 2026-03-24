@@ -83,6 +83,10 @@ const styles = StyleSheet.create({
     height: SIZE + 8,
     alignItems: 'center',
     justifyContent: 'center',
+    borderRadius: 20,
+    backgroundColor: '#ffffff',
+    borderWidth: 1,
+    borderColor: '#ececec',
   },
   // 绝对定位居中，overflow:hidden 防止 D 形溢出
   ringWrap: {
