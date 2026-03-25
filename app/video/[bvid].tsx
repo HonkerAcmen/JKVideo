@@ -24,8 +24,11 @@ import { CommentItem } from "../../components/CommentItem";
 import {
   followUser,
   getDanmaku,
+  getVideoLikeStatus,
   postComment,
   getRelationStatus,
+  setCommentLike,
+  setVideoLike,
   unfollowUser,
 } from "../../services/bilibili";
 import { DanmakuItem } from "../../services/types";
@@ -72,6 +75,12 @@ export default function VideoDetailScreen() {
   const [showDownload, setShowDownload] = useState(false);
   const [commentText, setCommentText] = useState("");
   const [sendingComment, setSendingComment] = useState(false);
+  const [videoLiked, setVideoLiked] = useState(false);
+  const [videoLikeLoading, setVideoLikeLoading] = useState(false);
+  const [videoLikeCount, setVideoLikeCount] = useState(0);
+  const [commentLikeMap, setCommentLikeMap] = useState<
+    Record<number, { liked: boolean; count: number; loading: boolean }>
+  >({});
   const [showLogin, setShowLogin] = useState(false);
   const [following, setFollowing] = useState(false);
   const [followLoading, setFollowLoading] = useState(false);
@@ -129,6 +138,10 @@ export default function VideoDetailScreen() {
   }, [video?.aid, commentSort]);
 
   useEffect(() => {
+    setVideoLikeCount(stats?.like ?? 0);
+  }, [stats?.like]);
+
+  useEffect(() => {
     if (!video?.cid) return;
     getDanmaku(video.cid).then(setDanmakus);
   }, [video?.cid]);
@@ -143,6 +156,21 @@ export default function VideoDetailScreen() {
       .then(setFollowing)
       .catch(() => setFollowing(false));
   }, [isLoggedIn, video?.owner?.mid]);
+
+  useEffect(() => {
+    const aid = video?.aid ?? 0;
+    if (!aid || !isLoggedIn) {
+      setVideoLiked(false);
+      return;
+    }
+    getVideoLikeStatus(aid)
+      .then(setVideoLiked)
+      .catch(() => setVideoLiked(false));
+  }, [isLoggedIn, video?.aid]);
+
+  useEffect(() => {
+    setCommentLikeMap({});
+  }, [video?.aid, commentSort]);
 
   useEffect(() => {
     if (!isAndroid) return;
@@ -226,6 +254,78 @@ export default function VideoDetailScreen() {
         face: video?.owner?.face ?? "",
       },
     } as any);
+  };
+
+  const handleToggleVideoLike = async () => {
+    const aid = video?.aid ?? 0;
+    if (!aid) return;
+    if (!isLoggedIn) {
+      setShowLogin(true);
+      return;
+    }
+    if (videoLikeLoading) return;
+    const next = !videoLiked;
+    setVideoLikeLoading(true);
+    try {
+      await setVideoLike(aid, next, bvid as string);
+      setVideoLiked(next);
+      setVideoLikeCount((prev) => Math.max(0, prev + (next ? 1 : -1)));
+      setToast({
+        visible: true,
+        message: next ? "点赞成功" : "已取消点赞",
+        type: "success",
+      });
+    } catch (e: any) {
+      setToast({
+        visible: true,
+        message: e?.message ?? "点赞操作失败",
+        type: "error",
+      });
+    } finally {
+      setVideoLikeLoading(false);
+    }
+  };
+
+  const handleToggleCommentLike = async (item: any) => {
+    const aid = video?.aid ?? 0;
+    const rpid = Number(item?.rpid ?? 0);
+    if (!aid || !rpid) return;
+    if (!isLoggedIn) {
+      setShowLogin(true);
+      return;
+    }
+    const current = commentLikeMap[rpid] ?? {
+      liked: Number(item?.action ?? 0) === 1,
+      count: Number(item?.like ?? 0),
+      loading: false,
+    };
+    if (current.loading) return;
+    const next = !current.liked;
+    setCommentLikeMap((prev) => ({
+      ...prev,
+      [rpid]: { ...current, loading: true },
+    }));
+    try {
+      await setCommentLike(aid, rpid, next);
+      setCommentLikeMap((prev) => ({
+        ...prev,
+        [rpid]: {
+          liked: next,
+          count: Math.max(0, current.count + (next ? 1 : -1)),
+          loading: false,
+        },
+      }));
+    } catch (e: any) {
+      setCommentLikeMap((prev) => ({
+        ...prev,
+        [rpid]: { ...current, loading: false },
+      }));
+      setToast({
+        visible: true,
+        message: e?.message ?? "评论点赞失败",
+        type: "error",
+      });
+    }
   };
 
   const handleSendComment = async () => {
@@ -402,7 +502,24 @@ export default function VideoDetailScreen() {
         <Text style={styles.title}>{video?.title}</Text>
         <View style={styles.statsRow}>
           <StatBadge icon="play" count={stats?.view ?? 0} />
-          <StatBadge icon="heart" count={stats?.like ?? 0} />
+          <TouchableOpacity
+            style={[styles.likeStatBtn, videoLiked && styles.likeStatBtnActive]}
+            onPress={handleToggleVideoLike}
+            activeOpacity={0.85}
+            disabled={videoLikeLoading}
+          >
+            <Ionicons
+              name={videoLiked ? "heart" : "heart-outline"}
+              size={15}
+              color={videoLiked ? "#111" : "#444"}
+            />
+            <Text style={[styles.likeStatText, videoLiked && styles.likeStatTextActive]}>
+              {videoLikeLoading ? "处理中" : "点赞"}
+            </Text>
+            <Text style={[styles.likeStatCount, videoLiked && styles.likeStatTextActive]}>
+              {formatCount(videoLikeCount)}
+            </Text>
+          </TouchableOpacity>
           <StatBadge icon="star" count={stats?.favorite ?? 0} />
           <StatBadge icon="chatbubble" count={stats?.reply ?? 0} />
         </View>
@@ -574,7 +691,16 @@ export default function VideoDetailScreen() {
             </TouchableOpacity>
           </View>
           {comments.map((item) => (
-            <CommentItem key={String(item.rpid)} item={item} />
+            <CommentItem
+              key={String(item.rpid)}
+              item={item}
+              liked={
+                commentLikeMap[item.rpid]?.liked ?? Number(item.action ?? 0) === 1
+              }
+              likeCount={commentLikeMap[item.rpid]?.count ?? item.like}
+              likeLoading={commentLikeMap[item.rpid]?.loading ?? false}
+              onLikePress={handleToggleCommentLike}
+            />
           ))}
           {cmtLoading ? (
             <ActivityIndicator style={styles.loader} color="#00AEEC" />
@@ -598,7 +724,15 @@ export default function VideoDetailScreen() {
         style={styles.tabScroll}
         data={comments}
         keyExtractor={(c) => String(c.rpid)}
-        renderItem={({ item }) => <CommentItem item={item} />}
+        renderItem={({ item }) => (
+          <CommentItem
+            item={item}
+            liked={commentLikeMap[item.rpid]?.liked ?? Number(item.action ?? 0) === 1}
+            likeCount={commentLikeMap[item.rpid]?.count ?? item.like}
+            likeLoading={commentLikeMap[item.rpid]?.loading ?? false}
+            onLikePress={handleToggleCommentLike}
+          />
+        )}
         onEndReached={() => {
           if (cmtHasMore && !cmtLoading) loadComments();
         }}
@@ -801,11 +935,32 @@ export default function VideoDetailScreen() {
   );
 }
 
-function StatBadge({ icon, count }: { icon: string; count: number }) {
+function StatBadge({
+  icon,
+  count,
+  active = false,
+  onPress,
+}: {
+  icon: string;
+  count: number;
+  active?: boolean;
+  onPress?: () => void;
+}) {
+  const wrapStyle = [styles.stat, active && styles.statActive];
+  const textStyle = [styles.statText, active && styles.statTextActive];
+  const iconColor = active ? "#111" : "#999";
+  if (onPress) {
+    return (
+      <TouchableOpacity style={wrapStyle} onPress={onPress} activeOpacity={0.85}>
+        <Ionicons name={icon as any} size={14} color={iconColor} />
+        <Text style={textStyle}>{formatCount(count)}</Text>
+      </TouchableOpacity>
+    );
+  }
   return (
-    <View style={styles.stat}>
-      <Ionicons name={icon as any} size={14} color="#999" />
-      <Text style={styles.statText}>{formatCount(count)}</Text>
+    <View style={wrapStyle}>
+      <Ionicons name={icon as any} size={14} color={iconColor} />
+      <Text style={textStyle}>{formatCount(count)}</Text>
     </View>
   );
 }
@@ -1018,7 +1173,31 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     backgroundColor: "#efefef",
   },
+  statActive: {
+    backgroundColor: "#e7e7e7",
+    borderWidth: 1,
+    borderColor: "#d5d5d5",
+  },
   statText: { fontSize: 12, color: "#565656", fontWeight: "500" },
+  statTextActive: { color: "#111", fontWeight: "700" as const },
+  likeStatBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 999,
+    backgroundColor: "#f0f0f0",
+    borderWidth: 1,
+    borderColor: "#dcdcdc",
+  },
+  likeStatBtnActive: {
+    backgroundColor: "#e7e7e7",
+    borderColor: "#bfbfbf",
+  },
+  likeStatText: { fontSize: 12, color: "#444", fontWeight: "700" as const },
+  likeStatCount: { fontSize: 12, color: "#444", fontWeight: "600" as const },
+  likeStatTextActive: { color: "#111" },
   upRow: {
     flexDirection: "row",
     alignItems: "center",

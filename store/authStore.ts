@@ -79,5 +79,12 @@ export const useAuthStore = create<AuthState>((set) => ({
     }
   },
 
-  setProfile: (face, username, uid) => set({ face, username, uid }),
+  setProfile: (face, username, uid) => {
+    set({ face, username, uid });
+    AsyncStorage.multiSet([
+      ["FACE", face ?? ""],
+      ["USERNAME", username ?? ""],
+      ["UID", uid ?? ""],
+    ]).catch(() => {});
+  },
 }));

@@ -17,9 +17,12 @@ app.use((req, res, next) => {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader(
     "Access-Control-Allow-Headers",
-    "Content-Type, X-Buvid3, X-Sessdata, X-Bili-Jct, Range",
+    "Content-Type, X-Buvid3, X-Buvid4, X-Sessdata, X-Bili-Jct, X-Uid, X-Uid-Ckmd5, X-Sid, Range",
   );
-  res.setHeader("Access-Control-Expose-Headers", "X-Sessdata, X-Bili-Jct");
+  res.setHeader(
+    "Access-Control-Expose-Headers",
+    "X-Sessdata, X-Bili-Jct, X-DedeUserID, X-DedeUserID-Ckmd5, X-Sid",
+  );
   res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
   if (req.method === "OPTIONS") return res.sendStatus(200);
   next();
@@ -28,12 +31,20 @@ app.use((req, res, next) => {
 function makeProxy(targetHost) {
   return (req, res) => {
     const buvid3 = req.headers["x-buvid3"] || "";
+    const buvid4 = req.headers["x-buvid4"] || "";
     const sessdata = req.headers["x-sessdata"] || "";
     const biliJct = req.headers["x-bili-jct"] || "";
+    const uid = req.headers["x-uid"] || "";
+    const uidCkmd5 = req.headers["x-uid-ckmd5"] || "";
+    const sid = req.headers["x-sid"] || "";
     const cookies = [
       buvid3 && `buvid3=${buvid3}`,
+      buvid4 && `buvid4=${buvid4}`,
       sessdata && `SESSDATA=${sessdata}`,
       biliJct && `bili_jct=${biliJct}`,
+      uid && `DedeUserID=${uid}`,
+      uidCkmd5 && `DedeUserID__ckMd5=${uidCkmd5}`,
+      sid && `sid=${sid}`,
     ]
       .filter(Boolean)
       .join("; ");
@@ -66,6 +77,23 @@ function makeProxy(targetHost) {
       if (jctMatch) {
         const val = jctMatch.split(";")[0].replace("bili_jct=", "");
         res.setHeader("X-Bili-Jct", val);
+      }
+      const uidMatch = setCookies.find((c) => c.includes("DedeUserID="));
+      if (uidMatch) {
+        const val = uidMatch.split(";")[0].replace("DedeUserID=", "");
+        res.setHeader("X-DedeUserID", val);
+      }
+      const uidMd5Match = setCookies.find((c) => c.includes("DedeUserID__ckMd5="));
+      if (uidMd5Match) {
+        const val = uidMd5Match
+          .split(";")[0]
+          .replace("DedeUserID__ckMd5=", "");
+        res.setHeader("X-DedeUserID-Ckmd5", val);
+      }
+      const sidMatch = setCookies.find((c) => c.includes("sid="));
+      if (sidMatch) {
+        const val = sidMatch.split(";")[0].replace("sid=", "");
+        res.setHeader("X-Sid", val);
       }
       res.writeHead(proxyRes.statusCode, {
         "Content-Type": proxyRes.headers["content-type"] || "application/json",

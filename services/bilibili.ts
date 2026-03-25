@@ -39,13 +39,46 @@ function generateBuvid3(): string {
   return `${s(8)}-${s(4)}-${s(4)}-${s(4)}-${s(12)}infoc`;
 }
 
-async function getBuvid3(): Promise<string> {
-  let buvid3 = await AsyncStorage.getItem("buvid3");
-  if (!buvid3) {
-    buvid3 = generateBuvid3();
-    await AsyncStorage.setItem("buvid3", buvid3);
+async function getBuvidCookies(): Promise<{ buvid3: string; buvid4: string }> {
+  let [buvid3, buvid4] = await AsyncStorage.multiGet(["buvid3", "buvid4"]).then(
+    (pairs) => [pairs[0][1], pairs[1][1]],
+  );
+  if (buvid3 && buvid4) return { buvid3, buvid4 };
+
+  try {
+    const res = await axios.get(`${BASE}/x/frontend/finger/spi`, {
+      headers: isWeb
+        ? {
+            Accept: "application/json, text/plain, */*",
+            "Accept-Language": "zh-CN,zh;q=0.9",
+          }
+        : {
+            Referer: "https://www.bilibili.com",
+            Origin: "https://www.bilibili.com",
+            "User-Agent": UA,
+            Accept: "application/json, text/plain, */*",
+            "Accept-Language": "zh-CN,zh;q=0.9",
+          },
+      timeout: 8000,
+    });
+    const b3 = (res.data?.data?.b_3 as string | undefined) || buvid3 || generateBuvid3();
+    const b4 = (res.data?.data?.b_4 as string | undefined) || buvid4 || "";
+    buvid3 = b3;
+    buvid4 = b4;
+    await AsyncStorage.multiSet([
+      ["buvid3", buvid3],
+      ["buvid4", buvid4],
+    ]);
+  } catch {
+    buvid3 = buvid3 || generateBuvid3();
+    buvid4 = buvid4 || "";
+    await AsyncStorage.multiSet([
+      ["buvid3", buvid3],
+      ["buvid4", buvid4],
+    ]);
   }
-  return buvid3;
+
+  return { buvid3, buvid4 };
 }
 
 const api = axios.create({
@@ -66,20 +99,32 @@ const api = axios.create({
 });
 
 api.interceptors.request.use(async (config) => {
-  const [sessdata, buvid3, biliJct] = await Promise.all([
+  const [sessdata, buvid, biliJct, uid, uidCkmd5, sid] = await Promise.all([
     AsyncStorage.getItem("SESSDATA"),
-    getBuvid3(),
+    getBuvidCookies(),
     AsyncStorage.getItem("BILI_JCT"),
+    AsyncStorage.getItem("UID"),
+    AsyncStorage.getItem("UID_CKMD5"),
+    AsyncStorage.getItem("SID"),
   ]);
+  const { buvid3, buvid4 } = buvid;
   if (isWeb) {
     // Browsers block Cookie/Referer/Origin headers; relay via custom headers to proxy
     if (buvid3) config.headers["X-Buvid3"] = buvid3;
+    if (buvid4) config.headers["X-Buvid4"] = buvid4;
     if (sessdata) config.headers["X-Sessdata"] = sessdata;
     if (biliJct) config.headers["X-Bili-Jct"] = biliJct;
+    if (uid) config.headers["X-Uid"] = uid;
+    if (uidCkmd5) config.headers["X-Uid-Ckmd5"] = uidCkmd5;
+    if (sid) config.headers["X-Sid"] = sid;
   } else {
     const cookies: string[] = [`buvid3=${buvid3}`];
+    if (buvid4) cookies.push(`buvid4=${buvid4}`);
     if (sessdata) cookies.push(`SESSDATA=${sessdata}`);
     if (biliJct) cookies.push(`bili_jct=${biliJct}`);
+    if (uid) cookies.push(`DedeUserID=${uid}`);
+    if (uidCkmd5) cookies.push(`DedeUserID__ckMd5=${uidCkmd5}`);
+    if (sid) cookies.push(`sid=${sid}`);
     config.headers["Cookie"] = cookies.join("; ");
   }
   return config;
@@ -237,25 +282,75 @@ export async function postComment(aid: number, message: string): Promise<void> {
   const csrf = await ensureCsrfToken();
   if (!csrf) throw new Error("登录态缺少 csrf，请重新登录");
 
-  const res = await api.post(
-    "/x/v2/reply/add",
-    null,
-    {
-      params: {
-        oid: aid,
-        type: 1,
-        message: content,
-        plat: 1,
-        csrf,
-        csrf_token: csrf,
-      },
-      headers: {
-        "Content-Type": "application/x-www-form-urlencoded",
-      },
-    },
-  );
+  const res = await postForm("/x/v2/reply/add", {
+    oid: aid,
+    type: 1,
+    message: content,
+    plat: 1,
+    csrf,
+    csrf_token: csrf,
+  });
   if (res.data?.code !== 0) {
-    throw new Error(res.data?.message || "发送评论失败");
+    throw new Error(`${res.data?.message || "发送评论失败"} (${res.data?.code ?? "unknown"})`);
+  }
+}
+
+export async function getVideoLikeStatus(aid: number): Promise<boolean> {
+  if (!aid) return false;
+  const res = await api.get("/x/web-interface/archive/has/like", {
+    params: { aid },
+  });
+  const val = Number(res.data?.data ?? 0);
+  return val === 1;
+}
+
+export async function setVideoLike(
+  aid: number,
+  like: boolean,
+  bvid?: string,
+): Promise<void> {
+  if (!aid) throw new Error("无效的视频ID");
+  const csrf = await ensureCsrfToken();
+  if (!csrf) throw new Error("登录态缺少 csrf，请重新登录");
+  let res = await postForm("/x/web-interface/archive/like", {
+    aid,
+    ...(bvid ? { bvid } : {}),
+    like: like ? 1 : 2,
+    csrf,
+    csrf_token: csrf,
+  });
+  // Compatibility retry on the same official endpoint with a minimal payload.
+  // (Avoid legacy fallback paths that may return 404 on some regions/builds.)
+  if (res.data?.code === -403) {
+    res = await postForm("/x/web-interface/archive/like", {
+      aid,
+      like: like ? 1 : 2,
+      csrf,
+    });
+  }
+  if (res.data?.code !== 0) {
+    throw new Error(`${res.data?.message || "点赞操作失败"} (${res.data?.code ?? "unknown"})`);
+  }
+}
+
+export async function setCommentLike(
+  aid: number,
+  rpid: number,
+  like: boolean,
+): Promise<void> {
+  if (!aid || !rpid) throw new Error("无效的评论参数");
+  const csrf = await ensureCsrfToken();
+  if (!csrf) throw new Error("登录态缺少 csrf，请重新登录");
+  const res = await postForm("/x/v2/reply/action", {
+    oid: aid,
+    type: 1,
+    rpid,
+    action: like ? 1 : 0,
+    csrf,
+    csrf_token: csrf,
+  });
+  if (res.data?.code !== 0) {
+    throw new Error(`${res.data?.message || "评论点赞失败"} (${res.data?.code ?? "unknown"})`);
   }
 }
 
@@ -284,7 +379,14 @@ export async function generateQRCode(): Promise<QRCodeInfo> {
 
 export async function pollQRCode(
   qrcode_key: string,
-): Promise<{ code: number; cookie?: string; csrf?: string }> {
+): Promise<{
+  code: number;
+  cookie?: string;
+  csrf?: string;
+  uid?: string;
+  uidCkmd5?: string;
+  sid?: string;
+}> {
   const headers = isWeb ? {} : { Referer: "https://www.bilibili.com" };
   const res = await axios.get(`${PASSPORT}/x/passport-login/web/qrcode/poll`, {
     params: { qrcode_key },
@@ -294,42 +396,44 @@ export async function pollQRCode(
   const dataUrl = res.data?.data?.url as string | undefined;
   let cookie: string | undefined;
   let csrf: string | undefined;
+  let uid: string | undefined;
+  let uidCkmd5: string | undefined;
+  let sid: string | undefined;
   if (code === 0) {
     if (isWeb) {
       // Proxy relays SESSDATA via custom response header
       cookie = res.headers["x-sessdata"] as string | undefined;
       csrf = res.headers["x-bili-jct"] as string | undefined;
+      uid = res.headers["x-dedeuserid"] as string | undefined;
+      uidCkmd5 = res.headers["x-dedeuserid-ckmd5"] as string | undefined;
+      sid = res.headers["x-sid"] as string | undefined;
     } else {
       const setCookie = res.headers["set-cookie"];
-      const match = setCookie?.find((c: string) => c.includes("SESSDATA="));
-      if (match) {
-        const sessPart = match
-          .split(";")
-          .find((p: string) => p.trim().startsWith("SESSDATA="));
-        if (sessPart) {
-          cookie = sessPart.trim().replace("SESSDATA=", "");
-        }
-      }
-      const jctMatch = setCookie?.find((c: string) => c.includes("bili_jct="));
-      if (jctMatch) {
-        const jctPart = jctMatch
-          .split(";")
-          .find((p: string) => p.trim().startsWith("bili_jct="));
-        if (jctPart) {
-          csrf = jctPart.trim().replace("bili_jct=", "");
-        }
-      }
+      cookie = extractCookieFromSetCookie(setCookie, "SESSDATA");
+      csrf = extractCookieFromSetCookie(setCookie, "bili_jct");
+      uid = extractCookieFromSetCookie(setCookie, "DedeUserID");
+      uidCkmd5 = extractCookieFromSetCookie(setCookie, "DedeUserID__ckMd5");
+      sid = extractCookieFromSetCookie(setCookie, "sid");
     }
     // Fallback: Android/RN may not always expose set-cookie headers.
     // In that case, parse login params from callback URL.
-    if ((!cookie || !csrf) && dataUrl) {
+    if ((!cookie || !csrf || !uid || !uidCkmd5 || !sid) && dataUrl) {
       const fromUrlCookie = getParamFromUrl(dataUrl, ["SESSDATA", "sessdata"]);
       const fromUrlCsrf = getParamFromUrl(dataUrl, ["bili_jct", "csrf"]);
+      const fromUrlUid = getParamFromUrl(dataUrl, ["DedeUserID", "dedeuserid"]);
+      const fromUrlUidCkmd5 = getParamFromUrl(dataUrl, [
+        "DedeUserID__ckMd5",
+        "dedeuserid__ckmd5",
+      ]);
+      const fromUrlSid = getParamFromUrl(dataUrl, ["sid"]);
       if (!cookie && fromUrlCookie) cookie = fromUrlCookie;
       if (!csrf && fromUrlCsrf) csrf = fromUrlCsrf;
+      if (!uid && fromUrlUid) uid = fromUrlUid;
+      if (!uidCkmd5 && fromUrlUidCkmd5) uidCkmd5 = fromUrlUidCkmd5;
+      if (!sid && fromUrlSid) sid = fromUrlSid;
     }
   }
-  return { code, cookie, csrf };
+  return { code, cookie, csrf, uid, uidCkmd5, sid };
 }
 
 function getParamFromUrl(url: string, names: string[]): string | undefined {
@@ -337,20 +441,41 @@ function getParamFromUrl(url: string, names: string[]): string | undefined {
     const u = new URL(url);
     for (const name of names) {
       const v = u.searchParams.get(name);
-      if (v) return decodeSafe(v);
+      if (v) return v;
+    }
+    // Some callback URLs carry params in hash fragment instead of query string.
+    const hash = u.hash || "";
+    for (const name of names) {
+      const matched = hash.match(
+        new RegExp(`(?:[?#&])${name}=([^&#]+)`, "i"),
+      );
+      if (matched?.[1]) return matched[1];
     }
   } catch {
     // ignore parse failures
   }
+  // Last-resort regex parser for non-standard callback URLs.
+  for (const name of names) {
+    const matched = url.match(new RegExp(`[?&#]${name}=([^&#]+)`, "i"));
+    if (matched?.[1]) return matched[1];
+  }
   return undefined;
 }
 
-function decodeSafe(v: string): string {
-  try {
-    return decodeURIComponent(v);
-  } catch {
-    return v;
-  }
+function extractCookieFromSetCookie(
+  setCookie: unknown,
+  key: string,
+): string | undefined {
+  if (!Array.isArray(setCookie)) return undefined;
+  const match = setCookie.find(
+    (c) => typeof c === "string" && c.includes(`${key}=`),
+  ) as string | undefined;
+  if (!match) return undefined;
+  const part = match
+    .split(";")
+    .find((p) => p.trim().startsWith(`${key}=`));
+  if (!part) return undefined;
+  return part.trim().replace(`${key}=`, "");
 }
 
 export async function getRelationStatus(mid: number): Promise<boolean> {
@@ -374,25 +499,32 @@ async function modifyRelation(mid: number, act: 1 | 2): Promise<void> {
   if (!csrf) {
     throw new Error("登录态缺少 csrf，请重新扫码登录后重试");
   }
-  const res = await api.post(
-    "/x/relation/modify",
-    null,
-    {
-      params: {
-        fid: mid,
-        act,
-        re_src: 11,
-        csrf,
-        csrf_token: csrf,
-      },
-      headers: {
-        "Content-Type": "application/x-www-form-urlencoded",
-      },
-    },
-  );
+  const res = await postForm("/x/relation/modify", {
+    fid: mid,
+    act,
+    re_src: 11,
+    csrf,
+    csrf_token: csrf,
+  });
   if (res.data?.code !== 0) {
-    throw new Error(res.data?.message || (act === 1 ? "关注失败" : "取关失败"));
+    throw new Error(
+      `${res.data?.message || (act === 1 ? "关注失败" : "取关失败")} (${res.data?.code ?? "unknown"})`,
+    );
   }
+}
+
+function encodeForm(data: Record<string, string | number>): string {
+  return Object.entries(data)
+    .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(String(v))}`)
+    .join("&");
+}
+
+async function postForm(path: string, data: Record<string, string | number>) {
+  return api.post(path, encodeForm(data), {
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded",
+    },
+  });
 }
 
 async function ensureCsrfToken(): Promise<string | null> {

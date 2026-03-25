@@ -48,6 +48,7 @@ export interface Comment {
     uname: string;
     avatar: string;
   };
+  action?: number;
   like: number;
   ctime: number;
   replies: Comment[] | null;

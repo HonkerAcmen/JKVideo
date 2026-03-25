@@ -16,6 +16,7 @@ import * as MediaLibrary from "expo-media-library";
 import { Ionicons } from "@expo/vector-icons";
 import { generateQRCode, pollQRCode, getUserInfo } from "../services/bilibili";
 import { useAuthStore } from "../store/authStore";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
 interface Props {
   visible: boolean;
@@ -82,7 +83,12 @@ export function LoginModal({ visible, onClose }: Props) {
       if (result.code === 0 && result.cookie) {
         clearInterval(pollRef.current!);
         try {
-          await login(result.cookie, "", "", result.csrf);
+          if (result.uid) await AsyncStorage.setItem("UID", result.uid);
+          if (result.uidCkmd5) {
+            await AsyncStorage.setItem("UID_CKMD5", result.uidCkmd5);
+          }
+          if (result.sid) await AsyncStorage.setItem("SID", result.sid);
+          await login(result.cookie, result.uid ?? "", "", result.csrf);
           setStatus("done");
           const info = await getUserInfo();
           setProfile(info.face, info.uname, String(info.mid));

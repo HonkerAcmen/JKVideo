@@ -719,7 +719,7 @@ export const NativeVideoPlayer = forwardRef<NativeVideoPlayerRef, Props>(
           />
         )}
 
-        {isFullscreen && !!danmakus?.length && (
+        {isFullscreen && !!danmakus?.length && showControls && (
           <TouchableOpacity
             style={[
               styles.danmakuFab,

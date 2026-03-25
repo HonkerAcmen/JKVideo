@@ -87,6 +87,14 @@ export function VideoPlayer({ playData, qualities, currentQn, onQualityChange, b
   }, []);
 
   useEffect(() => {
+    if (Platform.OS === "web") return;
+    StatusBar.setHidden(fullscreenMode !== "inline", "fade");
+    return () => {
+      StatusBar.setHidden(false, "fade");
+    };
+  }, [fullscreenMode]);
+
+  useEffect(() => {
     if (Platform.OS !== 'web') return;
     const video = webVideoRef.current;
     if (!video) return;
