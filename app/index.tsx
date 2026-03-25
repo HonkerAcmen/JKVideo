@@ -90,6 +90,7 @@ export default function HomeScreen() {
   const insets = useSafeAreaInsets();
   const [activeTab, setActiveTab] = useState<TabKey>("hot");
   const [liveAreaId, setLiveAreaId] = useState(0);
+  const [showBackTop, setShowBackTop] = useState(false);
 
   const [visibleBigKey, setVisibleBigKey] = useState<string | null>(null);
   const rows = useMemo(() => toListRows(pages, liveRooms), [pages, liveRooms]);
@@ -110,6 +111,7 @@ export default function HomeScreen() {
 
   const hotListRef = useRef<FlatList>(null);
   const liveListRef = useRef<FlatList>(null);
+  const showBackTopRef = useRef(false);
 
   const onViewableItemsChangedRef = useRef(
     ({ viewableItems }: { viewableItems: ViewToken[] }) => {
@@ -153,20 +155,39 @@ export default function HomeScreen() {
     load();
   }, []);
 
+  const updateBackTopVisibility = useCallback((offsetY: number) => {
+    const next = offsetY > 280;
+    if (next !== showBackTopRef.current) {
+      showBackTopRef.current = next;
+      setShowBackTop(next);
+    }
+  }, []);
+
   const onScroll = useMemo(
     () =>
       Animated.event([{ nativeEvent: { contentOffset: { y: scrollY } } }], {
         useNativeDriver: true,
+        listener: (e: any) =>
+          updateBackTopVisibility(e.nativeEvent.contentOffset.y),
       }),
-    [],
+    [updateBackTopVisibility],
   );
 
   const onLiveScroll = useMemo(
     () =>
       Animated.event([{ nativeEvent: { contentOffset: { y: liveScrollY } } }], {
         useNativeDriver: true,
+        listener: (e: any) =>
+          updateBackTopVisibility(e.nativeEvent.contentOffset.y),
       }),
-    [],
+    [updateBackTopVisibility],
+  );
+
+  const handleWebScroll = useCallback(
+    (e: any) => {
+      updateBackTopVisibility(e.nativeEvent.contentOffset.y);
+    },
+    [updateBackTopVisibility],
   );
 
   const handleTabPress = useCallback(
@@ -232,6 +253,16 @@ export default function HomeScreen() {
 
   const visibleBigKeyRef = useRef(visibleBigKey);
   visibleBigKeyRef.current = visibleBigKey;
+
+  const handleBackToTop = useCallback(() => {
+    if (isWeb) {
+      webScrollRef.current?.scrollTo({ y: 0, animated: true });
+    } else if (activeTab === "hot") {
+      hotListRef.current?.scrollToOffset({ offset: 0, animated: true });
+    } else {
+      liveListRef.current?.scrollToOffset({ offset: 0, animated: true });
+    }
+  }, [activeTab]);
 
   const renderItem = useCallback(
     ({ item: row }: { item: ListRow }) => {
@@ -550,12 +581,23 @@ export default function HomeScreen() {
             style={styles.webScroll}
             contentContainerStyle={styles.webScrollContent}
             showsVerticalScrollIndicator
+            onScroll={handleWebScroll}
+            scrollEventThrottle={16}
           >
             <View style={styles.webContent}>
               {activeTab === "hot" ? renderHotRows() : renderLiveRows()}
             </View>
           </ScrollView>
         </View>
+        {showBackTop && (
+          <TouchableOpacity
+            style={styles.backTopBtn}
+            onPress={handleBackToTop}
+            activeOpacity={0.85}
+          >
+            <Ionicons name="arrow-up" size={18} color="#fff" />
+          </TouchableOpacity>
+        )}
         <LoginModal visible={showLogin} onClose={() => setShowLogin(false)} />
       </SafeAreaView>
     );
@@ -704,6 +746,18 @@ export default function HomeScreen() {
           {renderNavBar()}
         </Animated.View>
       </Animated.View>
+      {showBackTop && (
+        <TouchableOpacity
+          style={[
+            styles.backTopBtn,
+            { bottom: insets.bottom + 26 },
+          ]}
+          onPress={handleBackToTop}
+          activeOpacity={0.85}
+        >
+          <Ionicons name="arrow-up" size={18} color="#fff" />
+        </TouchableOpacity>
+      )}
 
       <LoginModal visible={showLogin} onClose={() => setShowLogin(false)} />
     </SafeAreaView>
@@ -911,5 +965,22 @@ const styles = StyleSheet.create({
   areaTabTextActive: {
     color: "#fff",
     fontWeight: "600",
+  },
+  backTopBtn: {
+    position: "absolute",
+    right: 18,
+    bottom: 26,
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    backgroundColor: "rgba(17,17,17,0.92)",
+    alignItems: "center",
+    justifyContent: "center",
+    zIndex: 30,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.2,
+    shadowRadius: 6,
+    elevation: 5,
   },
 });
