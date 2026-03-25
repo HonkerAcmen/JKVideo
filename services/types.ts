@@ -167,3 +167,19 @@ export interface LiveStreamInfo {
   qn: number;
   qualities: { qn: number; desc: string }[];
 }
+
+export interface FavoriteFolder {
+  id: number;
+  title: string;
+  media_count: number;
+  cover: string;
+  intro?: string;
+}
+
+export interface FollowUser {
+  mid: number;
+  uname: string;
+  face: string;
+  sign?: string;
+  mtime?: number;
+}

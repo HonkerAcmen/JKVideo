@@ -13,6 +13,8 @@ import type {
   LiveRoomDetail,
   LiveAnchorInfo,
   LiveStreamInfo,
+  FavoriteFolder,
+  FollowUser,
 } from "./types";
 import { signWbi } from "../utils/wbi";
 import { parseDanmakuXml } from "../utils/danmaku";
@@ -570,4 +572,84 @@ export async function getFollowedLiveRooms(): Promise<LiveRoom[]> {
     area_name: r.area_v2_name ?? "",
     parent_area_name: r.area_v2_parent_name ?? "",
   }));
+}
+
+export async function getFavoriteFolders(
+  upMid: number,
+): Promise<FavoriteFolder[]> {
+  const res = await api.get("/x/v3/fav/folder/created/list-all", {
+    params: { up_mid: upMid },
+  });
+  const list: any[] = res.data?.data?.list ?? [];
+  return list.map((f: any) => ({
+    id: f.id ?? f.media_id ?? 0,
+    title: f.title ?? "",
+    media_count: f.media_count ?? 0,
+    cover: f.cover ?? "",
+    intro: f.intro ?? "",
+  }));
+}
+
+export async function getFavoriteFolderVideos(
+  mediaId: number,
+  pn = 1,
+  ps = 20,
+): Promise<{ videos: VideoItem[]; hasMore: boolean }> {
+  const res = await api.get("/x/v3/fav/resource/list", {
+    params: { media_id: mediaId, pn, ps, platform: "web" },
+  });
+  const data = res.data?.data ?? {};
+  const medias: any[] = data?.medias ?? [];
+  const info = data?.info ?? {};
+  const total = info?.media_count ?? medias.length;
+  const hasMore = pn * ps < total;
+  const videos = medias
+    .filter((m) => m?.bvid && m?.title)
+    .map(
+      (m) =>
+        ({
+          bvid: m.bvid,
+          aid: m.id ?? m.aid ?? 0,
+          title: m.title ?? "",
+          pic: m.cover ?? "",
+          owner: {
+            mid: m.upper?.mid ?? 0,
+            name: m.upper?.name ?? "",
+            face: "",
+          },
+          stat: {
+            view: m.cnt_info?.play ?? 0,
+            danmaku: m.cnt_info?.danmaku ?? 0,
+            reply: m.cnt_info?.reply ?? 0,
+            like: m.cnt_info?.like ?? 0,
+            coin: m.cnt_info?.coin ?? 0,
+            favorite: m.cnt_info?.collect ?? 0,
+          },
+          duration: m.duration ?? 0,
+          desc: m.intro ?? "",
+        }) as VideoItem,
+    );
+  return { videos, hasMore };
+}
+
+export async function getFollowings(
+  vmid: number,
+  pn = 1,
+  ps = 30,
+): Promise<{ users: FollowUser[]; hasMore: boolean }> {
+  const res = await api.get("/x/relation/followings", {
+    params: { vmid, pn, ps, order: "desc", order_type: "attention" },
+  });
+  const data = res.data?.data ?? {};
+  const list: any[] = data?.list ?? [];
+  const total = data?.total ?? list.length;
+  const hasMore = pn * ps < total;
+  const users = list.map((u: any) => ({
+    mid: u.mid ?? 0,
+    uname: u.uname ?? "",
+    face: u.face ?? "",
+    sign: u.sign ?? "",
+    mtime: u.mtime ?? 0,
+  }));
+  return { users, hasMore };
 }

@@ -89,6 +89,28 @@ export default function SettingsScreen() {
       </View>
 
       {isLoggedIn && (
+        <View style={styles.section}>
+          <Text style={styles.sectionLabel}>账号内容</Text>
+          <TouchableOpacity
+            style={styles.entryRow}
+            onPress={() => router.push("/favorites" as any)}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.entryText}>我的收藏夹</Text>
+            <Ionicons name="chevron-forward" size={18} color="#999" />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.entryRow, styles.entryRowLast]}
+            onPress={() => router.push("/following" as any)}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.entryText}>我的关注</Text>
+            <Ionicons name="chevron-forward" size={18} color="#999" />
+          </TouchableOpacity>
+        </View>
+      )}
+
+      {isLoggedIn && (
         <TouchableOpacity style={styles.logoutBtn} onPress={handleLogout} activeOpacity={0.8}>
           <Text style={styles.logoutText}>退出登录</Text>
         </TouchableOpacity>
@@ -153,6 +175,21 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
   },
   updateBtnText: { fontSize: 14, color: '#00AEEC', fontWeight: '600' },
+  entryRow: {
+    paddingVertical: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: '#eee',
+  },
+  entryRowLast: {
+    borderBottomWidth: 0,
+  },
+  entryText: {
+    fontSize: 14,
+    color: '#212121',
+  },
   logoutBtn: {
     margin: 24,
     paddingVertical: 12,
