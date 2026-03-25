@@ -20,7 +20,12 @@ import { formatCount } from "../../utils/format";
 import { proxyImageUrl } from "../../utils/imageUrl";
 import { useAuthStore } from "../../store/authStore";
 import { LoginModal } from "../../components/LoginModal";
-import { followUser, getRelationStatus, unfollowUser } from "../../services/bilibili";
+import {
+  followUser,
+  getRelationStatus,
+  unfollowUser,
+} from "../../services/bilibili";
+import { AppToast } from "../../components/AppToast";
 
 type Tab = "intro" | "danmaku";
 
@@ -34,6 +39,11 @@ export default function LiveDetailScreen() {
   const [showLogin, setShowLogin] = useState(false);
   const [following, setFollowing] = useState(false);
   const [followLoading, setFollowLoading] = useState(false);
+  const [toast, setToast] = useState<{
+    visible: boolean;
+    message: string;
+    type: "success" | "error" | "info";
+  }>({ visible: false, message: "", type: "info" });
   const { isLoggedIn } = useAuthStore();
 
   const isLive = room?.live_status === 1;
@@ -76,9 +86,17 @@ export default function LiveDetailScreen() {
             try {
               await unfollowUser(mid);
               setFollowing(false);
-              Alert.alert("成功", "已取消关注");
+              setToast({
+                visible: true,
+                message: "已取消关注",
+                type: "success",
+              });
             } catch (e: any) {
-              Alert.alert("操作失败", e?.message ?? "请稍后重试");
+              setToast({
+                visible: true,
+                message: e?.message ?? "请稍后重试",
+                type: "error",
+              });
             } finally {
               setFollowLoading(false);
             }
@@ -91,9 +109,13 @@ export default function LiveDetailScreen() {
     try {
       await followUser(mid);
       setFollowing(true);
-      Alert.alert("成功", "关注成功");
+      setToast({ visible: true, message: "关注成功", type: "success" });
     } catch (e: any) {
-      Alert.alert("关注失败", e?.message ?? "请稍后重试");
+      setToast({
+        visible: true,
+        message: e?.message ?? "请稍后重试",
+        type: "error",
+      });
     } finally {
       setFollowLoading(false);
     }
@@ -210,8 +232,14 @@ export default function LiveDetailScreen() {
                   activeOpacity={0.85}
                   disabled={followLoading}
                 >
-                  <Text style={[styles.followTxt, following && styles.followedTxt]}>
-                    {followLoading ? "关注中..." : following ? "已关注" : "+ 关注"}
+                  <Text
+                    style={[styles.followTxt, following && styles.followedTxt]}
+                  >
+                    {followLoading
+                      ? "关注中..."
+                      : following
+                        ? "已关注"
+                        : "+ 关注"}
                   </Text>
                 </TouchableOpacity>
               </View>
@@ -238,6 +266,12 @@ export default function LiveDetailScreen() {
         </>
       )}
       <LoginModal visible={showLogin} onClose={() => setShowLogin(false)} />
+      <AppToast
+        visible={toast.visible}
+        message={toast.message}
+        type={toast.type}
+        onClose={() => setToast((prev) => ({ ...prev, visible: false }))}
+      />
     </SafeAreaView>
   );
 }

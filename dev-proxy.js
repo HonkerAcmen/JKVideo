@@ -17,8 +17,9 @@ app.use((req, res, next) => {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader(
     "Access-Control-Allow-Headers",
-    "Content-Type, X-Buvid3, X-Sessdata, Range",
+    "Content-Type, X-Buvid3, X-Sessdata, X-Bili-Jct, Range",
   );
+  res.setHeader("Access-Control-Expose-Headers", "X-Sessdata, X-Bili-Jct");
   res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
   if (req.method === "OPTIONS") return res.sendStatus(200);
   next();
@@ -28,9 +29,11 @@ function makeProxy(targetHost) {
   return (req, res) => {
     const buvid3 = req.headers["x-buvid3"] || "";
     const sessdata = req.headers["x-sessdata"] || "";
+    const biliJct = req.headers["x-bili-jct"] || "";
     const cookies = [
       buvid3 && `buvid3=${buvid3}`,
       sessdata && `SESSDATA=${sessdata}`,
+      biliJct && `bili_jct=${biliJct}`,
     ]
       .filter(Boolean)
       .join("; ");
@@ -58,6 +61,11 @@ function makeProxy(targetHost) {
       if (match) {
         const val = match.split(";")[0].replace("SESSDATA=", "");
         res.setHeader("X-Sessdata", val);
+      }
+      const jctMatch = setCookies.find((c) => c.includes("bili_jct="));
+      if (jctMatch) {
+        const val = jctMatch.split(";")[0].replace("bili_jct=", "");
+        res.setHeader("X-Bili-Jct", val);
       }
       res.writeHead(proxyRes.statusCode, {
         "Content-Type": proxyRes.headers["content-type"] || "application/json",

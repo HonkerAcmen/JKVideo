@@ -36,6 +36,7 @@ import { proxyImageUrl } from "../../utils/imageUrl";
 import { DownloadSheet } from "../../components/DownloadSheet";
 import { useAuthStore } from "../../store/authStore";
 import { LoginModal } from "../../components/LoginModal";
+import { AppToast } from "../../components/AppToast";
 
 type Tab = "intro" | "comments" | "danmaku";
 const DETAIL_LIST_INITIAL_NUM = 6;
@@ -69,6 +70,11 @@ export default function VideoDetailScreen() {
   const [showLogin, setShowLogin] = useState(false);
   const [following, setFollowing] = useState(false);
   const [followLoading, setFollowLoading] = useState(false);
+  const [toast, setToast] = useState<{
+    visible: boolean;
+    message: string;
+    type: "success" | "error" | "info";
+  }>({ visible: false, message: "", type: "info" });
   const { isLoggedIn } = useAuthStore();
   const isWeb = Platform.OS === "web";
   const isAndroid = Platform.OS === "android";
@@ -173,9 +179,13 @@ export default function VideoDetailScreen() {
             try {
               await unfollowUser(mid);
               setFollowing(false);
-              Alert.alert("成功", "已取消关注");
+              setToast({ visible: true, message: "已取消关注", type: "success" });
             } catch (e: any) {
-              Alert.alert("操作失败", e?.message ?? "请稍后重试");
+              setToast({
+                visible: true,
+                message: e?.message ?? "请稍后重试",
+                type: "error",
+              });
             } finally {
               setFollowLoading(false);
             }
@@ -188,9 +198,13 @@ export default function VideoDetailScreen() {
     try {
       await followUser(mid);
       setFollowing(true);
-      Alert.alert("成功", "关注成功");
+      setToast({ visible: true, message: "关注成功", type: "success" });
     } catch (e: any) {
-      Alert.alert("关注失败", e?.message ?? "请稍后重试");
+      setToast({
+        visible: true,
+        message: e?.message ?? "请稍后重试",
+        type: "error",
+      });
     } finally {
       setFollowLoading(false);
     }
@@ -631,6 +645,12 @@ export default function VideoDetailScreen() {
           qualities={qualities}
         />
         <LoginModal visible={showLogin} onClose={() => setShowLogin(false)} />
+        <AppToast
+          visible={toast.visible}
+          message={toast.message}
+          type={toast.type}
+          onClose={() => setToast((prev) => ({ ...prev, visible: false }))}
+        />
       </SafeAreaView>
     );
   }
@@ -670,6 +690,12 @@ export default function VideoDetailScreen() {
         qualities={qualities}
       />
       <LoginModal visible={showLogin} onClose={() => setShowLogin(false)} />
+      <AppToast
+        visible={toast.visible}
+        message={toast.message}
+        type={toast.type}
+        onClose={() => setToast((prev) => ({ ...prev, visible: false }))}
+      />
       <Animated.View
         style={[
           styles.mobileInfoShell,

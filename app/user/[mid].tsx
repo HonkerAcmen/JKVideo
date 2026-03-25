@@ -28,6 +28,7 @@ import { useSettingsStore } from "../../store/settingsStore";
 import { useFollowingStore } from "../../store/followingStore";
 import { useAuthStore } from "../../store/authStore";
 import { LoginModal } from "../../components/LoginModal";
+import { AppToast } from "../../components/AppToast";
 
 const H_PADDING = 12;
 const ITEM_GAP = 10;
@@ -51,6 +52,11 @@ export default function UserHomeScreen() {
   const [showLogin, setShowLogin] = useState(false);
   const [following, setFollowing] = useState(false);
   const [followLoading, setFollowLoading] = useState(false);
+  const [toast, setToast] = useState<{
+    visible: boolean;
+    message: string;
+    type: "success" | "error" | "info";
+  }>({ visible: false, message: "", type: "info" });
 
   const [videos, setVideos] = useState<VideoItem[]>([]);
   const [loading, setLoading] = useState(false);
@@ -191,9 +197,13 @@ export default function UserHomeScreen() {
             try {
               await unfollowUser(userMid);
               setFollowing(false);
-              Alert.alert("成功", "已取消关注");
+              setToast({ visible: true, message: "已取消关注", type: "success" });
             } catch (e: any) {
-              Alert.alert("操作失败", e?.message ?? "请稍后重试");
+              setToast({
+                visible: true,
+                message: e?.message ?? "请稍后重试",
+                type: "error",
+              });
             } finally {
               setFollowLoading(false);
             }
@@ -207,9 +217,13 @@ export default function UserHomeScreen() {
     try {
       await followUser(userMid);
       setFollowing(true);
-      Alert.alert("成功", "关注成功");
+      setToast({ visible: true, message: "关注成功", type: "success" });
     } catch (e: any) {
-      Alert.alert("关注失败", e?.message ?? "请稍后重试");
+      setToast({
+        visible: true,
+        message: e?.message ?? "请稍后重试",
+        type: "error",
+      });
     } finally {
       setFollowLoading(false);
     }
@@ -392,6 +406,12 @@ export default function UserHomeScreen() {
         }
       />
       <LoginModal visible={showLogin} onClose={() => setShowLogin(false)} />
+      <AppToast
+        visible={toast.visible}
+        message={toast.message}
+        type={toast.type}
+        onClose={() => setToast((prev) => ({ ...prev, visible: false }))}
+      />
     </SafeAreaView>
   );
 }

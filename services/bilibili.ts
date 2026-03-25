@@ -262,6 +262,7 @@ export async function pollQRCode(
     headers,
   });
   const { code } = res.data.data;
+  const dataUrl = res.data?.data?.url as string | undefined;
   let cookie: string | undefined;
   let csrf: string | undefined;
   if (code === 0) {
@@ -290,8 +291,37 @@ export async function pollQRCode(
         }
       }
     }
+    // Fallback: Android/RN may not always expose set-cookie headers.
+    // In that case, parse login params from callback URL.
+    if ((!cookie || !csrf) && dataUrl) {
+      const fromUrlCookie = getParamFromUrl(dataUrl, ["SESSDATA", "sessdata"]);
+      const fromUrlCsrf = getParamFromUrl(dataUrl, ["bili_jct", "csrf"]);
+      if (!cookie && fromUrlCookie) cookie = fromUrlCookie;
+      if (!csrf && fromUrlCsrf) csrf = fromUrlCsrf;
+    }
   }
   return { code, cookie, csrf };
+}
+
+function getParamFromUrl(url: string, names: string[]): string | undefined {
+  try {
+    const u = new URL(url);
+    for (const name of names) {
+      const v = u.searchParams.get(name);
+      if (v) return decodeSafe(v);
+    }
+  } catch {
+    // ignore parse failures
+  }
+  return undefined;
+}
+
+function decodeSafe(v: string): string {
+  try {
+    return decodeURIComponent(v);
+  } catch {
+    return v;
+  }
 }
 
 export async function getRelationStatus(mid: number): Promise<boolean> {
@@ -311,7 +341,7 @@ export async function unfollowUser(mid: number): Promise<void> {
 
 async function modifyRelation(mid: number, act: 1 | 2): Promise<void> {
   if (!mid) throw new Error("无效的用户ID");
-  const csrf = await AsyncStorage.getItem("BILI_JCT");
+  const csrf = await ensureCsrfToken();
   if (!csrf) {
     throw new Error("登录态缺少 csrf，请重新扫码登录后重试");
   }
@@ -334,6 +364,37 @@ async function modifyRelation(mid: number, act: 1 | 2): Promise<void> {
   if (res.data?.code !== 0) {
     throw new Error(res.data?.message || (act === 1 ? "关注失败" : "取关失败"));
   }
+}
+
+async function ensureCsrfToken(): Promise<string | null> {
+  const cached = await AsyncStorage.getItem("BILI_JCT");
+  if (cached) return cached;
+
+  try {
+    const res = await api.get("/x/web-interface/nav");
+    const csrf =
+      (res.headers?.["x-bili-jct"] as string | undefined) ??
+      extractBiliJctFromSetCookie(res.headers?.["set-cookie"]);
+    if (csrf) {
+      await AsyncStorage.setItem("BILI_JCT", csrf);
+      return csrf;
+    }
+  } catch {
+    // ignore and fallback to null
+  }
+
+  return null;
+}
+
+function extractBiliJctFromSetCookie(setCookie: unknown): string | undefined {
+  if (!Array.isArray(setCookie)) return undefined;
+  const target = setCookie.find(
+    (c) => typeof c === "string" && c.includes("bili_jct="),
+  ) as string | undefined;
+  if (!target) return undefined;
+  const kv = target.split(";")[0];
+  if (!kv.startsWith("bili_jct=")) return undefined;
+  return kv.replace("bili_jct=", "");
 }
 
 const LIVE_BASE = isWeb
