@@ -15,6 +15,7 @@ import type {
   LiveStreamInfo,
   FavoriteFolder,
   FollowUser,
+  UserSpaceProfile,
 } from "./types";
 import { signWbi } from "../utils/wbi";
 import { parseDanmakuXml } from "../utils/danmaku";
@@ -65,17 +66,20 @@ const api = axios.create({
 });
 
 api.interceptors.request.use(async (config) => {
-  const [sessdata, buvid3] = await Promise.all([
+  const [sessdata, buvid3, biliJct] = await Promise.all([
     AsyncStorage.getItem("SESSDATA"),
     getBuvid3(),
+    AsyncStorage.getItem("BILI_JCT"),
   ]);
   if (isWeb) {
     // Browsers block Cookie/Referer/Origin headers; relay via custom headers to proxy
     if (buvid3) config.headers["X-Buvid3"] = buvid3;
     if (sessdata) config.headers["X-Sessdata"] = sessdata;
+    if (biliJct) config.headers["X-Bili-Jct"] = biliJct;
   } else {
     const cookies: string[] = [`buvid3=${buvid3}`];
     if (sessdata) cookies.push(`SESSDATA=${sessdata}`);
+    if (biliJct) cookies.push(`bili_jct=${biliJct}`);
     config.headers["Cookie"] = cookies.join("; ");
   }
   return config;
@@ -251,7 +255,7 @@ export async function generateQRCode(): Promise<QRCodeInfo> {
 
 export async function pollQRCode(
   qrcode_key: string,
-): Promise<{ code: number; cookie?: string }> {
+): Promise<{ code: number; cookie?: string; csrf?: string }> {
   const headers = isWeb ? {} : { Referer: "https://www.bilibili.com" };
   const res = await axios.get(`${PASSPORT}/x/passport-login/web/qrcode/poll`, {
     params: { qrcode_key },
@@ -259,10 +263,12 @@ export async function pollQRCode(
   });
   const { code } = res.data.data;
   let cookie: string | undefined;
+  let csrf: string | undefined;
   if (code === 0) {
     if (isWeb) {
       // Proxy relays SESSDATA via custom response header
       cookie = res.headers["x-sessdata"] as string | undefined;
+      csrf = res.headers["x-bili-jct"] as string | undefined;
     } else {
       const setCookie = res.headers["set-cookie"];
       const match = setCookie?.find((c: string) => c.includes("SESSDATA="));
@@ -274,9 +280,60 @@ export async function pollQRCode(
           cookie = sessPart.trim().replace("SESSDATA=", "");
         }
       }
+      const jctMatch = setCookie?.find((c: string) => c.includes("bili_jct="));
+      if (jctMatch) {
+        const jctPart = jctMatch
+          .split(";")
+          .find((p: string) => p.trim().startsWith("bili_jct="));
+        if (jctPart) {
+          csrf = jctPart.trim().replace("bili_jct=", "");
+        }
+      }
     }
   }
-  return { code, cookie };
+  return { code, cookie, csrf };
+}
+
+export async function getRelationStatus(mid: number): Promise<boolean> {
+  if (!mid) return false;
+  const res = await api.get("/x/relation", { params: { fid: mid } });
+  const attr = Number(res.data?.data?.attribute ?? 0);
+  return (attr & 2) === 2;
+}
+
+export async function followUser(mid: number): Promise<void> {
+  await modifyRelation(mid, 1);
+}
+
+export async function unfollowUser(mid: number): Promise<void> {
+  await modifyRelation(mid, 2);
+}
+
+async function modifyRelation(mid: number, act: 1 | 2): Promise<void> {
+  if (!mid) throw new Error("无效的用户ID");
+  const csrf = await AsyncStorage.getItem("BILI_JCT");
+  if (!csrf) {
+    throw new Error("登录态缺少 csrf，请重新扫码登录后重试");
+  }
+  const res = await api.post(
+    "/x/relation/modify",
+    null,
+    {
+      params: {
+        fid: mid,
+        act,
+        re_src: 11,
+        csrf,
+        csrf_token: csrf,
+      },
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+    },
+  );
+  if (res.data?.code !== 0) {
+    throw new Error(res.data?.message || (act === 1 ? "关注失败" : "取关失败"));
+  }
 }
 
 const LIVE_BASE = isWeb
@@ -708,4 +765,44 @@ export async function getUserSpaceVideos(
       }) as VideoItem,
   );
   return { videos, hasMore };
+}
+
+export async function getUserSpaceProfile(mid: number): Promise<UserSpaceProfile> {
+  const { imgKey, subKey } = await getWbiKeys();
+  const signed = signWbi(
+    {
+      mid,
+      platform: "web",
+      web_location: 1550101,
+    },
+    imgKey,
+    subKey,
+  );
+
+  const [infoRes, relationRes, navRes] = await Promise.all([
+    api.get("/x/space/wbi/acc/info", { params: signed }),
+    api.get("/x/relation/stat", { params: { vmid: mid } }),
+    api.get("/x/space/navnum", { params: { mid } }),
+  ]);
+
+  const info = infoRes.data?.data ?? {};
+  const relation = relationRes.data?.data ?? {};
+  const nav = navRes.data?.data ?? {};
+  const topPhoto = info?.top_photo ?? "";
+  const vipLabel = info?.vip?.label?.text ?? "";
+  const officialTitle = info?.official?.title ?? "";
+
+  return {
+    mid: Number(info?.mid ?? mid ?? 0),
+    name: info?.name ?? "",
+    face: info?.face ?? "",
+    sign: info?.sign ?? "",
+    topPhoto: typeof topPhoto === "string" ? topPhoto : "",
+    level: Number(info?.level ?? 0),
+    officialTitle: typeof officialTitle === "string" ? officialTitle : "",
+    vipLabel: typeof vipLabel === "string" ? vipLabel : "",
+    following: Number(relation?.following ?? 0),
+    follower: Number(relation?.follower ?? 0),
+    archiveCount: Number(nav?.video ?? 0),
+  };
 }

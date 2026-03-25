@@ -13,13 +13,19 @@ import {
   Animated,
   NativeSyntheticEvent,
   NativeScrollEvent,
+  Alert,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { VideoPlayer } from "../../components/VideoPlayer";
 import { CommentItem } from "../../components/CommentItem";
-import { getDanmaku } from "../../services/bilibili";
+import {
+  followUser,
+  getDanmaku,
+  getRelationStatus,
+  unfollowUser,
+} from "../../services/bilibili";
 import { DanmakuItem } from "../../services/types";
 import DanmakuList from "../../components/DanmakuList";
 import { useVideoDetail } from "../../hooks/useVideoDetail";
@@ -28,6 +34,8 @@ import { useRelatedVideos } from "../../hooks/useRelatedVideos";
 import { formatCount, formatDuration } from "../../utils/format";
 import { proxyImageUrl } from "../../utils/imageUrl";
 import { DownloadSheet } from "../../components/DownloadSheet";
+import { useAuthStore } from "../../store/authStore";
+import { LoginModal } from "../../components/LoginModal";
 
 type Tab = "intro" | "comments" | "danmaku";
 const DETAIL_LIST_INITIAL_NUM = 6;
@@ -58,6 +66,10 @@ export default function VideoDetailScreen() {
   const [danmakus, setDanmakus] = useState<DanmakuItem[]>([]);
   const [currentTime, setCurrentTime] = useState(0);
   const [showDownload, setShowDownload] = useState(false);
+  const [showLogin, setShowLogin] = useState(false);
+  const [following, setFollowing] = useState(false);
+  const [followLoading, setFollowLoading] = useState(false);
+  const { isLoggedIn } = useAuthStore();
   const isWeb = Platform.OS === "web";
   const isAndroid = Platform.OS === "android";
   const stats = video?.stat;
@@ -111,6 +123,17 @@ export default function VideoDetailScreen() {
   }, [video?.cid]);
 
   useEffect(() => {
+    const mid = video?.owner?.mid ?? 0;
+    if (!isLoggedIn || !mid) {
+      setFollowing(false);
+      return;
+    }
+    getRelationStatus(mid)
+      .then(setFollowing)
+      .catch(() => setFollowing(false));
+  }, [isLoggedIn, video?.owner?.mid]);
+
+  useEffect(() => {
     if (!isAndroid) return;
     setAndroidPlayerRatio(androidExpandedRatio);
     lastLayoutRatioRef.current = androidExpandedRatio;
@@ -130,6 +153,61 @@ export default function VideoDetailScreen() {
     playerHeightAnim,
     width,
   ]);
+
+  const handleFollow = async () => {
+    const mid = video?.owner?.mid ?? 0;
+    if (!mid) return;
+    if (!isLoggedIn) {
+      setShowLogin(true);
+      return;
+    }
+    if (followLoading) return;
+    if (following) {
+      Alert.alert("提示", "确认取消关注该UP主？", [
+        { text: "取消", style: "cancel" },
+        {
+          text: "取关",
+          style: "destructive",
+          onPress: async () => {
+            setFollowLoading(true);
+            try {
+              await unfollowUser(mid);
+              setFollowing(false);
+              Alert.alert("成功", "已取消关注");
+            } catch (e: any) {
+              Alert.alert("操作失败", e?.message ?? "请稍后重试");
+            } finally {
+              setFollowLoading(false);
+            }
+          },
+        },
+      ]);
+      return;
+    }
+    setFollowLoading(true);
+    try {
+      await followUser(mid);
+      setFollowing(true);
+      Alert.alert("成功", "关注成功");
+    } catch (e: any) {
+      Alert.alert("关注失败", e?.message ?? "请稍后重试");
+    } finally {
+      setFollowLoading(false);
+    }
+  };
+
+  const handleOpenUpHome = () => {
+    const ownerMid = video?.owner?.mid;
+    if (!ownerMid) return;
+    router.push({
+      pathname: "/user/[mid]",
+      params: {
+        mid: String(ownerMid),
+        uname: video?.owner?.name ?? "",
+        face: video?.owner?.face ?? "",
+      },
+    } as any);
+  };
 
   const handleInfoScroll = (offsetY: number) => {
     if (!isAndroid) return;
@@ -247,13 +325,28 @@ export default function VideoDetailScreen() {
   const renderIntroHeader = () => (
     <>
       <View style={styles.upRow}>
-        <Image
-          source={{ uri: proxyImageUrl(video?.owner.face ?? "") }}
-          style={styles.avatar}
-        />
-        <Text style={styles.upName}>{video?.owner.name ?? ""}</Text>
-        <TouchableOpacity style={styles.followBtn}>
-          <Text style={styles.followTxt}>+ 关注</Text>
+        <TouchableOpacity
+          style={styles.upInfoTap}
+          onPress={handleOpenUpHome}
+          activeOpacity={0.82}
+        >
+          <Image
+            source={{ uri: proxyImageUrl(video?.owner.face ?? "") }}
+            style={styles.avatar}
+          />
+          <Text style={styles.upName} numberOfLines={1}>
+            {video?.owner.name ?? ""}
+          </Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.followBtn, following && styles.followedBtn]}
+          onPress={handleFollow}
+          activeOpacity={0.85}
+          disabled={followLoading}
+        >
+          <Text style={[styles.followTxt, following && styles.followedTxt]}>
+            {followLoading ? "关注中..." : following ? "已关注" : "+ 关注"}
+          </Text>
         </TouchableOpacity>
       </View>
       <View style={styles.titleSection}>
@@ -537,6 +630,7 @@ export default function VideoDetailScreen() {
           cover={video?.pic ?? ""}
           qualities={qualities}
         />
+        <LoginModal visible={showLogin} onClose={() => setShowLogin(false)} />
       </SafeAreaView>
     );
   }
@@ -575,6 +669,7 @@ export default function VideoDetailScreen() {
         cover={video?.pic ?? ""}
         qualities={qualities}
       />
+      <LoginModal visible={showLogin} onClose={() => setShowLogin(false)} />
       <Animated.View
         style={[
           styles.mobileInfoShell,
@@ -838,6 +933,7 @@ const styles = StyleSheet.create({
     paddingBottom: 0,
     paddingTop: 22,
   },
+  upInfoTap: { flex: 1, flexDirection: "row", alignItems: "center" },
   avatar: { width: 46, height: 46, borderRadius: 23, marginRight: 12 },
   upName: { flex: 1, fontSize: 15, color: "#111111", fontWeight: "600" },
   followBtn: {
@@ -846,7 +942,11 @@ const styles = StyleSheet.create({
     paddingVertical: 9,
     borderRadius: 999,
   },
+  followedBtn: {
+    backgroundColor: "#f0f0f0",
+  },
   followTxt: { color: "#ffffff", fontSize: 12, fontWeight: "600" },
+  followedTxt: { color: "#555" },
   seasonBox: {
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: "#e3e3e3",

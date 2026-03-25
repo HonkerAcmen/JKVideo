@@ -82,7 +82,7 @@ export function LoginModal({ visible, onClose }: Props) {
       if (result.code === 0 && result.cookie) {
         clearInterval(pollRef.current!);
         try {
-          await login(result.cookie, "", "");
+          await login(result.cookie, "", "", result.csrf);
           setStatus("done");
           const info = await getUserInfo();
           setProfile(info.face, info.uname, String(info.mid));

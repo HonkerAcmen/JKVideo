@@ -7,17 +7,27 @@ import {
   FlatList,
   ActivityIndicator,
   Image,
+  ImageBackground,
   useWindowDimensions,
+  Alert,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
-import { getUserSpaceVideos } from "../../services/bilibili";
-import type { VideoItem } from "../../services/types";
+import {
+  followUser,
+  getRelationStatus,
+  getUserSpaceProfile,
+  getUserSpaceVideos,
+  unfollowUser,
+} from "../../services/bilibili";
+import type { UserSpaceProfile, VideoItem } from "../../services/types";
 import { formatCount, formatDuration } from "../../utils/format";
 import { coverImageUrl, proxyImageUrl } from "../../utils/imageUrl";
 import { useSettingsStore } from "../../store/settingsStore";
 import { useFollowingStore } from "../../store/followingStore";
+import { useAuthStore } from "../../store/authStore";
+import { LoginModal } from "../../components/LoginModal";
 
 const H_PADDING = 12;
 const ITEM_GAP = 10;
@@ -34,7 +44,13 @@ export default function UserHomeScreen() {
   }>();
   const coverQuality = useSettingsStore((s) => s.coverQuality);
   const markViewed = useFollowingStore((s) => s.markViewed);
+  const { isLoggedIn } = useAuthStore();
   const userMid = Number(mid || 0);
+  const [profile, setProfile] = useState<UserSpaceProfile | null>(null);
+  const [profileLoading, setProfileLoading] = useState(false);
+  const [showLogin, setShowLogin] = useState(false);
+  const [following, setFollowing] = useState(false);
+  const [followLoading, setFollowLoading] = useState(false);
 
   const [videos, setVideos] = useState<VideoItem[]>([]);
   const [loading, setLoading] = useState(false);
@@ -96,6 +112,27 @@ export default function UserHomeScreen() {
 
   useEffect(() => {
     if (!userMid) return;
+    setProfileLoading(true);
+    getUserSpaceProfile(userMid)
+      .then(setProfile)
+      .catch(() => {
+        setProfile(null);
+      })
+      .finally(() => setProfileLoading(false));
+  }, [userMid]);
+
+  useEffect(() => {
+    if (!isLoggedIn || !userMid) {
+      setFollowing(false);
+      return;
+    }
+    getRelationStatus(userMid)
+      .then(setFollowing)
+      .catch(() => setFollowing(false));
+  }, [isLoggedIn, userMid]);
+
+  useEffect(() => {
+    if (!userMid) return;
     markViewed(userMid);
   }, [markViewed, userMid]);
 
@@ -130,6 +167,54 @@ export default function UserHomeScreen() {
     </TouchableOpacity>
   );
 
+  const displayName = profile?.name || uname || `UID ${mid}`;
+  const displayFace = profile?.face || face || "";
+  const displaySign = profile?.sign || sign || "这个人很懒，什么都没写";
+  const displayTopPhoto = profile?.topPhoto || "";
+
+  const handleToggleFollow = async () => {
+    if (!userMid) return;
+    if (!isLoggedIn) {
+      setShowLogin(true);
+      return;
+    }
+    if (followLoading) return;
+
+    if (following) {
+      Alert.alert("提示", "确认取消关注该用户？", [
+        { text: "取消", style: "cancel" },
+        {
+          text: "取关",
+          style: "destructive",
+          onPress: async () => {
+            setFollowLoading(true);
+            try {
+              await unfollowUser(userMid);
+              setFollowing(false);
+              Alert.alert("成功", "已取消关注");
+            } catch (e: any) {
+              Alert.alert("操作失败", e?.message ?? "请稍后重试");
+            } finally {
+              setFollowLoading(false);
+            }
+          },
+        },
+      ]);
+      return;
+    }
+
+    setFollowLoading(true);
+    try {
+      await followUser(userMid);
+      setFollowing(true);
+      Alert.alert("成功", "关注成功");
+    } catch (e: any) {
+      Alert.alert("关注失败", e?.message ?? "请稍后重试");
+    } finally {
+      setFollowLoading(false);
+    }
+  };
+
   return (
     <SafeAreaView style={styles.safe}>
       <View style={styles.topBar}>
@@ -137,7 +222,7 @@ export default function UserHomeScreen() {
           <Ionicons name="chevron-back" size={24} color="#111" />
         </TouchableOpacity>
         <Text style={styles.topTitle} numberOfLines={1}>
-          {uname || "UP主页"}
+          {displayName || "UP主页"}
         </Text>
         <View style={styles.spacer} />
       </View>
@@ -157,19 +242,100 @@ export default function UserHomeScreen() {
         onEndReachedThreshold={0.3}
         ListHeaderComponent={
           <View>
-            <View style={styles.profileCard}>
-              {face ? (
-                <Image source={{ uri: proxyImageUrl(face) }} style={styles.avatar} />
-              ) : (
-                <View style={styles.avatarFallback}>
-                  <Ionicons name="person" size={26} color="#888" />
+            <ImageBackground
+              source={
+                displayTopPhoto
+                  ? { uri: proxyImageUrl(displayTopPhoto) }
+                  : undefined
+              }
+              style={styles.hero}
+              imageStyle={styles.heroImage}
+            >
+              <View style={styles.heroOverlay} />
+              <View style={styles.heroContent}>
+                {displayFace ? (
+                  <Image
+                    source={{ uri: proxyImageUrl(displayFace) }}
+                    style={styles.avatar}
+                  />
+                ) : (
+                  <View style={styles.avatarFallback}>
+                    <Ionicons name="person" size={26} color="#888" />
+                  </View>
+                )}
+                <View style={styles.profileInfo}>
+                  <Text style={styles.nameText} numberOfLines={1}>
+                    {displayName}
+                  </Text>
+                  <Text style={styles.signText} numberOfLines={2}>
+                    {displaySign}
+                  </Text>
+                  <View style={styles.tagRow}>
+                    <View style={styles.infoTag}>
+                      <Text style={styles.infoTagText}>
+                        Lv.{profile?.level ?? 0}
+                      </Text>
+                    </View>
+                    {!!profile?.vipLabel && (
+                      <View style={[styles.infoTag, styles.vipTag]}>
+                        <Text style={[styles.infoTagText, styles.vipTagText]}>
+                          {profile.vipLabel}
+                        </Text>
+                      </View>
+                    )}
+                    {!!profile?.officialTitle && (
+                      <View style={[styles.infoTag, styles.officialTag]}>
+                        <Text
+                          style={[styles.infoTagText, styles.officialTagText]}
+                          numberOfLines={1}
+                        >
+                          {profile.officialTitle}
+                        </Text>
+                      </View>
+                    )}
+                  </View>
                 </View>
-              )}
-              <View style={styles.profileInfo}>
-                <Text style={styles.nameText}>{uname || `UID ${mid}`}</Text>
-                <Text style={styles.signText} numberOfLines={2}>
-                  {sign || "这个人很懒，什么都没写"}
+                <TouchableOpacity
+                  style={[styles.heroFollowBtn, following && styles.heroFollowedBtn]}
+                  activeOpacity={0.85}
+                  onPress={handleToggleFollow}
+                  disabled={followLoading}
+                >
+                  <Text
+                    style={[
+                      styles.heroFollowText,
+                      following && styles.heroFollowedText,
+                    ]}
+                  >
+                    {followLoading ? "处理中..." : following ? "已关注" : "+ 关注"}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+              {profileLoading ? (
+                <ActivityIndicator style={styles.heroLoader} color="#fff" />
+              ) : null}
+            </ImageBackground>
+
+            <View style={styles.profileMetaCard}>
+              <View style={styles.metaItem}>
+                <Text style={styles.metaValue}>
+                  {formatCount(profile?.follower ?? 0)}
                 </Text>
+                <Text style={styles.metaLabel}>粉丝</Text>
+              </View>
+              <View style={styles.metaDivider} />
+              <View style={styles.metaItem}>
+                <Text style={styles.metaValue}>
+                  {formatCount(profile?.following ?? 0)}
+                </Text>
+                <Text style={styles.metaLabel}>关注</Text>
+              </View>
+              <View style={styles.metaDivider} />
+              <View style={styles.metaItem}>
+                <Text style={styles.metaValue}>
+                  {formatCount(profile?.archiveCount ?? videos.length)}
+                </Text>
+                <Text style={styles.metaLabel}>投稿</Text>
               </View>
             </View>
             <View style={styles.sortRow}>
@@ -225,6 +391,7 @@ export default function UserHomeScreen() {
           ) : null
         }
       />
+      <LoginModal visible={showLogin} onClose={() => setShowLogin(false)} />
     </SafeAreaView>
   );
 }
@@ -254,34 +421,92 @@ const styles = StyleSheet.create({
     paddingTop: 10,
     paddingBottom: 28,
   },
-  profileCard: {
+  hero: {
+    minHeight: 154,
     borderRadius: 16,
-    backgroundColor: "#fff",
-    borderWidth: 1,
-    borderColor: "#ececec",
-    padding: 14,
+    overflow: "hidden",
+    backgroundColor: "#d9d9d9",
+    marginBottom: 10,
+  },
+  heroImage: { resizeMode: "cover" },
+  heroOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(0,0,0,0.35)",
+  },
+  heroContent: {
+    flex: 1,
     flexDirection: "row",
     alignItems: "center",
+    padding: 14,
     gap: 12,
-    marginBottom: 12,
+  },
+  heroLoader: {
+    position: "absolute",
+    top: 12,
+    right: 12,
   },
   avatar: {
-    width: 58,
-    height: 58,
-    borderRadius: 29,
+    width: 66,
+    height: 66,
+    borderRadius: 33,
     backgroundColor: "#ececec",
+    borderWidth: 2,
+    borderColor: "rgba(255,255,255,0.9)",
   },
   avatarFallback: {
-    width: 58,
-    height: 58,
-    borderRadius: 29,
+    width: 66,
+    height: 66,
+    borderRadius: 33,
     backgroundColor: "#efefef",
     alignItems: "center",
     justifyContent: "center",
+    borderWidth: 2,
+    borderColor: "rgba(255,255,255,0.9)",
   },
   profileInfo: { flex: 1 },
-  nameText: { fontSize: 16, fontWeight: "700", color: "#111" },
-  signText: { marginTop: 4, fontSize: 12, color: "#666", lineHeight: 18 },
+  nameText: { fontSize: 18, fontWeight: "700", color: "#fff" },
+  signText: { marginTop: 4, fontSize: 12, color: "#ececec", lineHeight: 18 },
+  tagRow: { flexDirection: "row", flexWrap: "wrap", gap: 6, marginTop: 8 },
+  infoTag: {
+    borderRadius: 999,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    backgroundColor: "rgba(255,255,255,0.18)",
+  },
+  infoTagText: { fontSize: 11, color: "#fff", fontWeight: "600" },
+  vipTag: { backgroundColor: "rgba(255, 177, 177, 0.32)" },
+  vipTagText: { color: "#ffe9e9" },
+  officialTag: { backgroundColor: "rgba(175, 215, 255, 0.3)", maxWidth: "85%" },
+  officialTagText: { color: "#eaf5ff" },
+  heroFollowBtn: {
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    backgroundColor: "#ffffff",
+    borderWidth: 1,
+    borderColor: "#ffffff",
+  },
+  heroFollowedBtn: {
+    backgroundColor: "rgba(255,255,255,0.16)",
+    borderColor: "rgba(255,255,255,0.35)",
+  },
+  heroFollowText: { color: "#111", fontSize: 12, fontWeight: "700" },
+  heroFollowedText: { color: "#fff" },
+  profileMetaCard: {
+    borderRadius: 14,
+    backgroundColor: "#fff",
+    borderWidth: 1,
+    borderColor: "#ececec",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 10,
+    paddingVertical: 10,
+  },
+  metaItem: { flex: 1, alignItems: "center", justifyContent: "center" },
+  metaValue: { fontSize: 16, color: "#111", fontWeight: "700" },
+  metaLabel: { marginTop: 4, fontSize: 11, color: "#888" },
+  metaDivider: { width: 1, height: 26, backgroundColor: "#ececec" },
   column: { justifyContent: "space-between", marginBottom: ITEM_GAP },
   sortRow: {
     flexDirection: "row",

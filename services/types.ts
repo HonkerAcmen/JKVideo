@@ -183,3 +183,17 @@ export interface FollowUser {
   sign?: string;
   mtime?: number;
 }
+
+export interface UserSpaceProfile {
+  mid: number;
+  name: string;
+  face: string;
+  sign: string;
+  topPhoto: string;
+  level: number;
+  officialTitle: string;
+  vipLabel: string;
+  following: number;
+  follower: number;
+  archiveCount: number;
+}

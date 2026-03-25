@@ -7,6 +7,7 @@ import {
   TouchableOpacity,
   Image,
   ActivityIndicator,
+  Alert,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter } from "expo-router";
@@ -17,6 +18,9 @@ import { LivePlayer } from "../../components/LivePlayer";
 import DanmakuList from "../../components/DanmakuList";
 import { formatCount } from "../../utils/format";
 import { proxyImageUrl } from "../../utils/imageUrl";
+import { useAuthStore } from "../../store/authStore";
+import { LoginModal } from "../../components/LoginModal";
+import { followUser, getRelationStatus, unfollowUser } from "../../services/bilibili";
 
 type Tab = "intro" | "danmaku";
 
@@ -27,6 +31,10 @@ export default function LiveDetailScreen() {
   const { room, anchor, stream, loading, error, changeQuality } =
     useLiveDetail(id);
   const [tab, setTab] = useState<Tab>("intro");
+  const [showLogin, setShowLogin] = useState(false);
+  const [following, setFollowing] = useState(false);
+  const [followLoading, setFollowLoading] = useState(false);
+  const { isLoggedIn } = useAuthStore();
 
   const isLive = room?.live_status === 1;
   const hlsUrl = stream?.hlsUrl ?? "";
@@ -37,6 +45,60 @@ export default function LiveDetailScreen() {
   // Use actual roomid from room detail (not the short/alias ID from the URL)
   const actualRoomId = room?.roomid ?? id;
   const { danmakus, giftCounts } = useLiveDanmaku(isLive ? actualRoomId : 0);
+
+  React.useEffect(() => {
+    const mid = anchor?.uid ?? 0;
+    if (!isLoggedIn || !mid) {
+      setFollowing(false);
+      return;
+    }
+    getRelationStatus(mid)
+      .then(setFollowing)
+      .catch(() => setFollowing(false));
+  }, [anchor?.uid, isLoggedIn]);
+
+  const handleFollow = async () => {
+    const mid = anchor?.uid ?? 0;
+    if (!mid) return;
+    if (!isLoggedIn) {
+      setShowLogin(true);
+      return;
+    }
+    if (followLoading) return;
+    if (following) {
+      Alert.alert("提示", "确认取消关注该主播？", [
+        { text: "取消", style: "cancel" },
+        {
+          text: "取关",
+          style: "destructive",
+          onPress: async () => {
+            setFollowLoading(true);
+            try {
+              await unfollowUser(mid);
+              setFollowing(false);
+              Alert.alert("成功", "已取消关注");
+            } catch (e: any) {
+              Alert.alert("操作失败", e?.message ?? "请稍后重试");
+            } finally {
+              setFollowLoading(false);
+            }
+          },
+        },
+      ]);
+      return;
+    }
+    setFollowLoading(true);
+    try {
+      await followUser(mid);
+      setFollowing(true);
+      Alert.alert("成功", "关注成功");
+    } catch (e: any) {
+      Alert.alert("关注失败", e?.message ?? "请稍后重试");
+    } finally {
+      setFollowLoading(false);
+    }
+  };
+
   const handleBack = () => {
     if ((router as any).canGoBack?.()) {
       router.back();
@@ -142,8 +204,15 @@ export default function LiveDetailScreen() {
                   style={styles.avatar}
                 />
                 <Text style={styles.anchorName}>{anchor.uname}</Text>
-                <TouchableOpacity style={styles.followBtn}>
-                  <Text style={styles.followTxt}>+ 关注</Text>
+                <TouchableOpacity
+                  style={[styles.followBtn, following && styles.followedBtn]}
+                  onPress={handleFollow}
+                  activeOpacity={0.85}
+                  disabled={followLoading}
+                >
+                  <Text style={[styles.followTxt, following && styles.followedTxt]}>
+                    {followLoading ? "关注中..." : following ? "已关注" : "+ 关注"}
+                  </Text>
                 </TouchableOpacity>
               </View>
             )}
@@ -168,6 +237,7 @@ export default function LiveDetailScreen() {
           />
         </>
       )}
+      <LoginModal visible={showLogin} onClose={() => setShowLogin(false)} />
     </SafeAreaView>
   );
 }
@@ -273,6 +343,8 @@ const styles = StyleSheet.create({
     borderRadius: 14,
   },
   followTxt: { color: "#fff", fontSize: 12, fontWeight: "600" },
+  followedBtn: { backgroundColor: "#f1f1f1" },
+  followedTxt: { color: "#555" },
   descBox: { padding: 14, paddingTop: 4 },
   descText: { fontSize: 14, color: "#555", lineHeight: 22 },
   danmakuFull: { flex: 1 },
