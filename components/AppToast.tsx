@@ -23,6 +23,11 @@ export function AppToast({
 }: Props) {
   const opacity = useRef(new Animated.Value(0)).current;
   const translateY = useRef(new Animated.Value(8)).current;
+  const onCloseRef = useRef(onClose);
+
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  }, [onClose]);
 
   useEffect(() => {
     if (!visible) return;
@@ -51,11 +56,11 @@ export function AppToast({
           duration: 160,
           useNativeDriver: true,
         }),
-      ]).start(() => onClose());
+      ]).start(() => onCloseRef.current());
     }, duration);
 
     return () => clearTimeout(t);
-  }, [duration, onClose, opacity, translateY, visible]);
+  }, [duration, message, opacity, translateY, type, visible]);
 
   if (!visible) return null;
 
