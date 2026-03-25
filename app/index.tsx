@@ -102,9 +102,7 @@ export default function HomeScreen() {
     ? webContainerWidth - 8
     : Math.min((webContainerWidth - 24) / 2, 360);
   const webGridWidth = webSingleColumn ? webCardWidth : webCardWidth * 2 + 12;
-  const webBigCardWidth = isWeb
-    ? webGridWidth
-    : undefined;
+  const webBigCardWidth = isWeb ? webGridWidth : undefined;
   const webNavWidth = webSingleColumn
     ? Math.min(webContainerWidth, 680)
     : webGridWidth;
@@ -381,7 +379,9 @@ export default function HomeScreen() {
               <LiveCard
                 item={item.right}
                 width={webCardWidth}
-                onPress={() => router.push(`/live/${item.right!.roomid}` as any)}
+                onPress={() =>
+                  router.push(`/live/${item.right!.roomid}` as any)
+                }
               />
             )}
           </View>
@@ -401,7 +401,9 @@ export default function HomeScreen() {
               <LiveCard
                 item={item.right}
                 width={isWeb ? webCardWidth : undefined}
-                onPress={() => router.push(`/live/${item.right!.roomid}` as any)}
+                onPress={() =>
+                  router.push(`/live/${item.right!.roomid}` as any)
+                }
               />
             </View>
           )}
@@ -458,24 +460,36 @@ export default function HomeScreen() {
       </View>
 
       <View style={[styles.tabRow, isWeb && styles.webTabRow]}>
-        {TABS.map((tab) => (
-          <TouchableOpacity
-            key={tab.key}
-            style={styles.tabItem}
-            onPress={() => handleTabPress(tab.key)}
-            activeOpacity={0.7}
-          >
-            <Text
-              style={[
-                styles.tabText,
-                activeTab === tab.key && styles.tabTextActive,
-              ]}
+        <View style={styles.tabMain}>
+          {TABS.map((tab) => (
+            <TouchableOpacity
+              key={tab.key}
+              style={styles.tabItem}
+              onPress={() => handleTabPress(tab.key)}
+              activeOpacity={0.7}
             >
-              {tab.label}
-            </Text>
-            {activeTab === tab.key && <View style={styles.tabUnderline} />}
+              <Text
+                style={[
+                  styles.tabText,
+                  activeTab === tab.key && styles.tabTextActive,
+                ]}
+              >
+                {tab.label}
+              </Text>
+              {activeTab === tab.key && <View style={styles.tabUnderline} />}
+            </TouchableOpacity>
+          ))}
+        </View>
+        <View style={styles.tabActions}>
+          <TouchableOpacity
+            style={styles.tabActionBtn}
+            onPress={() => router.push("/me" as any)}
+            activeOpacity={0.75}
+          >
+            <Ionicons name="person-outline" size={14} color="#111" />
+            <Text style={styles.tabActionText}>我的</Text>
           </TouchableOpacity>
-        ))}
+        </View>
       </View>
     </>
   );
@@ -748,10 +762,7 @@ export default function HomeScreen() {
       </Animated.View>
       {showBackTop && (
         <TouchableOpacity
-          style={[
-            styles.backTopBtn,
-            { bottom: insets.bottom + 26 },
-          ]}
+          style={[styles.backTopBtn, { bottom: insets.bottom + 26 }]}
           onPress={handleBackToTop}
           activeOpacity={0.85}
         >
@@ -872,7 +883,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     flexDirection: "row",
     alignItems: "center",
-    gap: 12,
+    justifyContent: "space-between",
   },
   webTabRow: {
     marginTop: 10,
@@ -889,6 +900,32 @@ const styles = StyleSheet.create({
     height: TAB_H,
     paddingHorizontal: 12,
     borderRadius: 14,
+  },
+  tabMain: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+  tabActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  tabActionBtn: {
+    height: 28,
+    borderRadius: 14,
+    paddingHorizontal: 8,
+    backgroundColor: "#ffffff",
+    borderWidth: 1,
+    borderColor: "#e7e7e7",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+  },
+  tabActionText: {
+    fontSize: 11,
+    color: "#171717",
+    fontWeight: "600",
   },
   tabText: {
     fontSize: 14,

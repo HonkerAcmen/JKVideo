@@ -653,3 +653,59 @@ export async function getFollowings(
   }));
   return { users, hasMore };
 }
+
+export async function getUserSpaceVideos(
+  mid: number,
+  pn = 1,
+  ps = 20,
+  order: "pubdate" | "click" = "pubdate",
+): Promise<{ videos: VideoItem[]; hasMore: boolean }> {
+  const { imgKey, subKey } = await getWbiKeys();
+  const signed = signWbi(
+    {
+      mid,
+      pn,
+      ps,
+      order,
+      order_avoided: 1,
+      platform: "web",
+      web_location: 1550101,
+    },
+    imgKey,
+    subKey,
+  );
+  const res = await api.get("/x/space/wbi/arc/search", { params: signed });
+  const list: any[] = res.data?.data?.list?.vlist ?? [];
+  const page = res.data?.data?.page ?? {};
+  const total = page?.count ?? list.length;
+  const hasMore = pn * ps < total;
+  const videos = list.map(
+    (item: any) =>
+      ({
+        bvid: item.bvid ?? "",
+        aid: item.aid ?? 0,
+        title: item.title ?? "",
+        pic: item.pic
+          ? item.pic.startsWith("//")
+            ? `https:${item.pic}`
+            : item.pic
+          : "",
+        owner: {
+          mid: item.mid ?? mid,
+          name: item.author ?? "",
+          face: "",
+        },
+        stat: {
+          view: item.play ?? 0,
+          danmaku: item.video_review ?? 0,
+          reply: item.comment ?? 0,
+          like: 0,
+          coin: 0,
+          favorite: 0,
+        },
+        duration: item.length ? parseDuration(item.length) : 0,
+        desc: item.description ?? "",
+      }) as VideoItem,
+  );
+  return { videos, hasMore };
+}

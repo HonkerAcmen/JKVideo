@@ -6,6 +6,7 @@ import { useEffect } from "react";
 import { useAuthStore } from "../store/authStore";
 import { useDownloadStore } from "../store/downloadStore";
 import { useSettingsStore } from "../store/settingsStore";
+import { useFollowingStore } from "../store/followingStore";
 import { MiniPlayer } from "../components/MiniPlayer";
 import * as Sentry from "@sentry/react-native";
 import { ErrorBoundary } from "@sentry/react-native";
@@ -21,11 +22,13 @@ function RootLayout() {
   const restore = useAuthStore((s) => s.restore);
   const loadDownloads = useDownloadStore((s) => s.loadFromStorage);
   const restoreSettings = useSettingsStore((s) => s.restore);
+  const restoreFollowing = useFollowingStore((s) => s.restore);
 
   useEffect(() => {
     restore();
     loadDownloads();
     restoreSettings();
+    restoreFollowing();
   }, []);
 
   return (
@@ -81,6 +84,14 @@ function RootLayout() {
               }}
             />
             <Stack.Screen
+              name="me"
+              options={{
+                animation: "slide_from_right",
+                gestureEnabled: true,
+                gestureDirection: "horizontal",
+              }}
+            />
+            <Stack.Screen
               name="favorites"
               options={{
                 animation: "slide_from_right",
@@ -90,6 +101,14 @@ function RootLayout() {
             />
             <Stack.Screen
               name="following"
+              options={{
+                animation: "slide_from_right",
+                gestureEnabled: true,
+                gestureDirection: "horizontal",
+              }}
+            />
+            <Stack.Screen
+              name="user/[mid]"
               options={{
                 animation: "slide_from_right",
                 gestureEnabled: true,

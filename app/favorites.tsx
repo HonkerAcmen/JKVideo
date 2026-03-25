@@ -21,6 +21,9 @@ export default function FavoritesScreen() {
   const { uid, isLoggedIn } = useAuthStore();
   const [loading, setLoading] = useState(false);
   const [folders, setFolders] = useState<FavoriteFolder[]>([]);
+  const [coverErrorMap, setCoverErrorMap] = useState<Record<number, boolean>>(
+    {},
+  );
 
   const handleBack = () => {
     if ((router as any).canGoBack?.()) router.back();
@@ -33,6 +36,7 @@ export default function FavoritesScreen() {
     try {
       const list = await getFavoriteFolders(Number(uid));
       setFolders(list);
+      setCoverErrorMap({});
     } finally {
       setLoading(false);
     }
@@ -79,10 +83,19 @@ export default function FavoritesScreen() {
                 )
               }
             >
-              <Image
-                source={{ uri: proxyImageUrl(item.cover) }}
-                style={styles.cover}
-              />
+              {item.cover && !coverErrorMap[item.id] ? (
+                <Image
+                  source={{ uri: proxyImageUrl(item.cover) }}
+                  style={styles.cover}
+                  onError={() =>
+                    setCoverErrorMap((prev) => ({ ...prev, [item.id]: true }))
+                  }
+                />
+              ) : (
+                <View style={[styles.cover, styles.coverFallback]}>
+                  <Ionicons name="folder-open-outline" size={20} color="#8a8a8a" />
+                </View>
+              )}
               <View style={styles.info}>
                 <Text style={styles.title} numberOfLines={1}>
                   {item.title}
@@ -144,7 +157,13 @@ const styles = StyleSheet.create({
     width: 92,
     height: 58,
     borderRadius: 8,
-    backgroundColor: "#eee",
+    backgroundColor: "#ececec",
+  },
+  coverFallback: {
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: "#dfdfdf",
   },
   info: { flex: 1 },
   title: { fontSize: 14, color: "#212121", fontWeight: "600" },
@@ -153,4 +172,3 @@ const styles = StyleSheet.create({
   centerBox: { padding: 28, alignItems: "center" },
   emptyText: { color: "#888", fontSize: 14 },
 });
-
