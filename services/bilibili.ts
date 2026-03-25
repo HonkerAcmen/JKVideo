@@ -230,6 +230,35 @@ export async function getComments(
   return { replies, nextCursor, isEnd };
 }
 
+export async function postComment(aid: number, message: string): Promise<void> {
+  const content = message.trim();
+  if (!aid) throw new Error("无效的视频ID");
+  if (!content) throw new Error("评论内容不能为空");
+  const csrf = await ensureCsrfToken();
+  if (!csrf) throw new Error("登录态缺少 csrf，请重新登录");
+
+  const res = await api.post(
+    "/x/v2/reply/add",
+    null,
+    {
+      params: {
+        oid: aid,
+        type: 1,
+        message: content,
+        plat: 1,
+        csrf,
+        csrf_token: csrf,
+      },
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+    },
+  );
+  if (res.data?.code !== 0) {
+    throw new Error(res.data?.message || "发送评论失败");
+  }
+}
+
 export async function getVideoShot(
   bvid: string,
   cid: number,

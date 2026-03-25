@@ -45,5 +45,14 @@ export function useComments(aid: number, sort: number) {
     }
   }, []);
 
-  return { comments, loading, hasMore, load };
+  const reload = useCallback(async () => {
+    if (!aidRef.current) return;
+    cursorRef.current = '';
+    hasMoreRef.current = true;
+    setHasMore(true);
+    setComments([]);
+    await load();
+  }, [load]);
+
+  return { comments, loading, hasMore, load, reload };
 }

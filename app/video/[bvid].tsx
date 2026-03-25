@@ -14,6 +14,7 @@ import {
   NativeSyntheticEvent,
   NativeScrollEvent,
   Alert,
+  TextInput,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter } from "expo-router";
@@ -23,6 +24,7 @@ import { CommentItem } from "../../components/CommentItem";
 import {
   followUser,
   getDanmaku,
+  postComment,
   getRelationStatus,
   unfollowUser,
 } from "../../services/bilibili";
@@ -62,11 +64,14 @@ export default function VideoDetailScreen() {
     loading: cmtLoading,
     hasMore: cmtHasMore,
     load: loadComments,
+    reload: reloadComments,
   } = useComments(video?.aid ?? 0, commentSort);
   const [tab, setTab] = useState<Tab>("intro");
   const [danmakus, setDanmakus] = useState<DanmakuItem[]>([]);
   const [currentTime, setCurrentTime] = useState(0);
   const [showDownload, setShowDownload] = useState(false);
+  const [commentText, setCommentText] = useState("");
+  const [sendingComment, setSendingComment] = useState(false);
   const [showLogin, setShowLogin] = useState(false);
   const [following, setFollowing] = useState(false);
   const [followLoading, setFollowLoading] = useState(false);
@@ -221,6 +226,36 @@ export default function VideoDetailScreen() {
         face: video?.owner?.face ?? "",
       },
     } as any);
+  };
+
+  const handleSendComment = async () => {
+    const aid = video?.aid ?? 0;
+    if (!aid) return;
+    const content = commentText.trim();
+    if (!content) {
+      setToast({ visible: true, message: "请输入评论内容", type: "info" });
+      return;
+    }
+    if (!isLoggedIn) {
+      setShowLogin(true);
+      return;
+    }
+    if (sendingComment) return;
+    setSendingComment(true);
+    try {
+      await postComment(aid, content);
+      setCommentText("");
+      setToast({ visible: true, message: "评论发送成功", type: "success" });
+      await reloadComments();
+    } catch (e: any) {
+      setToast({
+        visible: true,
+        message: e?.message ?? "评论发送失败",
+        type: "error",
+      });
+    } finally {
+      setSendingComment(false);
+    }
   };
 
   const handleInfoScroll = (offsetY: number) => {
@@ -473,6 +508,34 @@ export default function VideoDetailScreen() {
   };
 
   const renderCommentsContent = () => {
+    const renderComposer = () => (
+      <View style={styles.commentComposer}>
+        <TextInput
+          style={styles.commentInput}
+          placeholder={isLoggedIn ? "说点什么..." : "登录后发表评论"}
+          placeholderTextColor="#9a9a9a"
+          value={commentText}
+          onChangeText={setCommentText}
+          editable={!sendingComment}
+          maxLength={300}
+          multiline
+        />
+        <TouchableOpacity
+          style={[
+            styles.sendBtn,
+            (!commentText.trim() || sendingComment) && styles.sendBtnDisabled,
+          ]}
+          onPress={handleSendComment}
+          disabled={sendingComment}
+          activeOpacity={0.85}
+        >
+          <Text style={styles.sendBtnText}>
+            {sendingComment ? "发送中" : "发送"}
+          </Text>
+        </TouchableOpacity>
+      </View>
+    );
+
     if (isWeb) {
       return (
         <ScrollView
@@ -480,6 +543,7 @@ export default function VideoDetailScreen() {
           contentContainerStyle={styles.webPanelContent}
           showsVerticalScrollIndicator={false}
         >
+          {renderComposer()}
           <View style={styles.sortRow}>
             <Text style={styles.sortLabel}>排序</Text>
             <TouchableOpacity
@@ -548,34 +612,37 @@ export default function VideoDetailScreen() {
         windowSize={DETAIL_LIST_WINDOW_SIZE}
         updateCellsBatchingPeriod={DETAIL_LIST_BATCH_INTERVAL}
         ListHeaderComponent={
-          <View style={styles.sortRow}>
-            <Text style={styles.sortLabel}>排序</Text>
-            <TouchableOpacity
-              style={[styles.sortBtn, commentSort === 2 && styles.sortBtnActive]}
-              onPress={() => setCommentSort(2)}
-            >
-              <Text
-                style={[
-                  styles.sortBtnTxt,
-                  commentSort === 2 && styles.sortBtnTxtActive,
-                ]}
+          <View>
+            {renderComposer()}
+            <View style={styles.sortRow}>
+              <Text style={styles.sortLabel}>排序</Text>
+              <TouchableOpacity
+                style={[styles.sortBtn, commentSort === 2 && styles.sortBtnActive]}
+                onPress={() => setCommentSort(2)}
               >
-                热门
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.sortBtn, commentSort === 0 && styles.sortBtnActive]}
-              onPress={() => setCommentSort(0)}
-            >
-              <Text
-                style={[
-                  styles.sortBtnTxt,
-                  commentSort === 0 && styles.sortBtnTxtActive,
-                ]}
+                <Text
+                  style={[
+                    styles.sortBtnTxt,
+                    commentSort === 2 && styles.sortBtnTxtActive,
+                  ]}
+                >
+                  热门
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.sortBtn, commentSort === 0 && styles.sortBtnActive]}
+                onPress={() => setCommentSort(0)}
               >
-                最新
-              </Text>
-            </TouchableOpacity>
+                <Text
+                  style={[
+                    styles.sortBtnTxt,
+                    commentSort === 0 && styles.sortBtnTxtActive,
+                  ]}
+                >
+                  最新
+                </Text>
+              </TouchableOpacity>
+            </View>
           </View>
         }
         ListFooterComponent={
@@ -1107,6 +1174,46 @@ const styles = StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: "#e5e5e5",
     backgroundColor: "#f5f5f5",
+  },
+  commentComposer: {
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    paddingBottom: 10,
+    backgroundColor: "#f5f5f5",
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: "#e5e5e5",
+    flexDirection: "row",
+    alignItems: "flex-end",
+    gap: 8,
+  },
+  commentInput: {
+    flex: 1,
+    minHeight: 38,
+    maxHeight: 92,
+    borderRadius: 12,
+    backgroundColor: "#fff",
+    borderWidth: 1,
+    borderColor: "#e0e0e0",
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    color: "#111",
+    fontSize: 13,
+  },
+  sendBtn: {
+    height: 38,
+    paddingHorizontal: 14,
+    borderRadius: 10,
+    backgroundColor: "#111",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  sendBtnDisabled: {
+    backgroundColor: "#999",
+  },
+  sendBtnText: {
+    color: "#fff",
+    fontSize: 12,
+    fontWeight: "700",
   },
   sortLabel: { fontSize: 13, color: "#707070", marginRight: 4 },
   sortBtn: {
