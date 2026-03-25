@@ -39,7 +39,7 @@
 
 ## 演示视频
 
-https://github.com/tiajinsha/JKVideo/releases/download/v1.0.0/6490dcd9dba9a243a7cd8f00359cc285.mp4
+<https://github.com/tiajinsha/JKVideo/releases/download/v1.0.0/6490dcd9dba9a243a7cd8f00359cc285.mp4>
 
 ---
 
@@ -89,37 +89,157 @@ Android · iOS · Web，Expo Go 扫码 5 分钟运行，Dev Build 解锁完整 D
 
 ## 快速开始
 
-### 方式一：Expo Go（5 分钟，无需编译）
+### 环境要求
 
-> 部分清晰度受限，视频播放降级为 WebView 方案
+- Node.js 20+
+- pnpm 10+
+- Android Studio（Android 开发 / 打包）
+- Xcode（仅 iOS）
+
+推荐先安装依赖：
 
 ```bash
 git clone https://github.com/tiajinsha/JKVideo.git
 cd JKVideo
-npm install
-npx expo start
+pnpm install
 ```
 
-用 Expo Go App（[Android](https://expo.dev/go) / [iOS](https://expo.dev/go)）扫描终端二维码即可运行。
+### 方式一：Expo Go（快速预览）
 
-### 方式二：Dev Build（完整功能，推荐）
-
-> 支持 DASH 1080P+ 原生播放、完整弹幕系统
+> 仅适合快速看 UI，部分原生能力不可用，视频播放会降级
 
 ```bash
-npm install
-npx expo run:android   # Android
-npx expo run:ios       # iOS（需 macOS + Xcode）
+pnpm start
+```
+
+用 Expo Go App（[Android](https://expo.dev/go) / [iOS](https://expo.dev/go)）扫描二维码即可运行。
+
+### 方式二：Dev Build（推荐，本项目主要开发方式）
+
+> 支持原生播放器、完整弹幕、下载、局域网分享等能力
+
+```bash
+pnpm android   # Android Dev Build
+pnpm ios       # iOS Dev Build（需 macOS + Xcode）
+```
+
+如果是第一次运行 Android，需要先准备：
+
+1. 安装 Android Studio
+2. 安装 Android SDK / Platform Tools / 模拟器镜像
+3. 确认 `adb` 可用
+4. 在项目中存在 `android/local.properties`
+
+示例 `android/local.properties`：
+
+```properties
+sdk.dir=/Users/你的用户名/Library/Android/sdk
+```
+
+如果你使用 Android 模拟器：
+
+```bash
+emulator -list-avds
+emulator -avd Pixel_9
+adb devices
+pnpm android
+```
+
+如果你使用 USB 真机：
+
+```bash
+adb devices
+export ANDROID_SERIAL=你的设备序列号
+pnpm android
+
+ npx expo start --dev-client --host localhost    
 ```
 
 ### 方式三：Web 端
 
+Web 端需要先启动本地代理，否则视频列表、直播列表和媒体资源会请求失败。
+
 ```bash
-npm install
-npx expo start --web
+pnpm proxy
+pnpm web
 ```
 
-> Web 端图片需本地代理服务器绕过防盗链：`node scripts/proxy.js`（端口 3001）
+说明：
+
+- 代理脚本是 [dev-proxy.js](/Users/feixue/Git_hub_Project/JKVideo/dev-proxy.js)
+- 默认监听 `3001`
+- Web 页面默认运行在 `8081`
+- Web 端不支持局域网分享功能
+
+### Android Release 打包（分发安装包）
+
+#### 1. 生成签名文件
+
+在 `android/app` 下生成正式 keystore：
+
+```bash
+cd android/app
+keytool -genkeypair -v -storetype PKCS12 -keystore jkvideo-release.keystore -alias jkvideo -keyalg RSA -keysize 2048 -validity 10000
+```
+
+生成后文件路径应为：
+
+[android/app/jkvideo-release.keystore](/Users/feixue/Git_hub_Project/JKVideo/android/app/jkvideo-release.keystore)
+
+#### 2. 配置签名信息
+
+复制模板：
+
+```bash
+cp android/keystore.properties.example android/keystore.properties
+```
+
+然后编辑：
+
+[android/keystore.properties](/Users/feixue/Git_hub_Project/JKVideo/android/keystore.properties)
+
+内容示例：
+
+```properties
+storeFile=jkvideo-release.keystore
+storePassword=你的store密码
+keyAlias=jkvideo
+keyPassword=你的key密码
+```
+
+注意：
+
+- `storeFile` 必须写 `jkvideo-release.keystore`
+- 不要写成 `app/jkvideo-release.keystore`
+
+#### 3. 打 APK
+
+```bash
+pnpm android:apk
+```
+
+产物位置：
+
+[android/app/build/outputs/apk/release/app-release.apk](/Users/feixue/Git_hub_Project/JKVideo/android/app/build/outputs/apk/release/app-release.apk)
+
+#### 4. 打 AAB（上架商店）
+
+```bash
+pnpm android:aab
+```
+
+产物位置：
+
+[android/app/build/outputs/bundle/release/app-release.aab](/Users/feixue/Git_hub_Project/JKVideo/android/app/build/outputs/bundle/release/app-release.aab)
+
+#### 5. 关于 Sentry
+
+本地 release 打包脚本已经默认禁用了 Sentry 自动上传 sourcemap：
+
+- `pnpm android:apk`
+- `pnpm android:aab`
+
+这样可以避免本地打包时被 `sentry-cli` 阻塞。
 
 ### 直接安装（Android）
 

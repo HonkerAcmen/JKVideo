@@ -35,6 +35,9 @@ const DRIP_INTERVAL = 250;
 const FAST_DRIP_INTERVAL = 100;
 const QUEUE_FAST_THRESHOLD = 50;
 const SEEK_THRESHOLD = 2;
+const DANMAKU_LIST_INITIAL_NUM = 24;
+const DANMAKU_LIST_MAX_BATCH = 24;
+const DANMAKU_LIST_WINDOW_SIZE = 12;
 
 // ─── 舰长等级 ───────────────────────────────────────────────────────────────────
 const GUARD_LABELS: Record<number, { text: string; color: string }> = {
@@ -307,6 +310,9 @@ export default function DanmakuList({
             onScrollBeginDrag={handleScrollBeginDrag}
             scrollEventThrottle={16}
             removeClippedSubviews={true}
+            initialNumToRender={DANMAKU_LIST_INITIAL_NUM}
+            maxToRenderPerBatch={DANMAKU_LIST_MAX_BATCH}
+            windowSize={DANMAKU_LIST_WINDOW_SIZE}
             ListEmptyComponent={
               <Text style={styles.empty}>
                 {danmakus.length === 0 ? "暂无弹幕" : "弹幕将随视频播放显示"}

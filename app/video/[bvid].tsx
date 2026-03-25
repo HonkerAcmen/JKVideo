@@ -30,6 +30,10 @@ import { proxyImageUrl } from "../../utils/imageUrl";
 import { DownloadSheet } from "../../components/DownloadSheet";
 
 type Tab = "intro" | "comments" | "danmaku";
+const DETAIL_LIST_INITIAL_NUM = 6;
+const DETAIL_LIST_MAX_BATCH = 6;
+const DETAIL_LIST_WINDOW_SIZE = 9;
+const DETAIL_LIST_BATCH_INTERVAL = 48;
 
 export default function VideoDetailScreen() {
   const { bvid } = useLocalSearchParams<{ bvid: string }>();
@@ -336,6 +340,11 @@ export default function VideoDetailScreen() {
         showsVerticalScrollIndicator={false}
         onScroll={isAndroid ? handleInfoScrollEvent : undefined}
         scrollEventThrottle={16}
+        removeClippedSubviews
+        initialNumToRender={DETAIL_LIST_INITIAL_NUM}
+        maxToRenderPerBatch={DETAIL_LIST_MAX_BATCH}
+        windowSize={DETAIL_LIST_WINDOW_SIZE}
+        updateCellsBatchingPeriod={DETAIL_LIST_BATCH_INTERVAL}
         onEndReached={() => {
           if (!relatedLoading) loadRelated();
         }}
@@ -426,6 +435,11 @@ export default function VideoDetailScreen() {
         showsVerticalScrollIndicator={false}
         onScroll={isAndroid ? handleInfoScrollEvent : undefined}
         scrollEventThrottle={16}
+        removeClippedSubviews
+        initialNumToRender={DETAIL_LIST_INITIAL_NUM}
+        maxToRenderPerBatch={DETAIL_LIST_MAX_BATCH}
+        windowSize={DETAIL_LIST_WINDOW_SIZE}
+        updateCellsBatchingPeriod={DETAIL_LIST_BATCH_INTERVAL}
         ListHeaderComponent={
           <View style={styles.sortRow}>
             <Text style={styles.sortLabel}>排序</Text>

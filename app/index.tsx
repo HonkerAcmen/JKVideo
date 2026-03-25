@@ -48,6 +48,10 @@ const HEADER_H = 44;
 const TAB_H = 38;
 const NAV_H = HEADER_H + TAB_H;
 const isWeb = Platform.OS === "web";
+const LIST_INITIAL_NUM = 6;
+const LIST_MAX_BATCH = 6;
+const LIST_WINDOW_SIZE = 9;
+const LIST_BATCH_INTERVAL = 48;
 
 const VIEWABILITY_CONFIG = { itemVisiblePercentThreshold: 50 };
 
@@ -604,6 +608,11 @@ export default function HomeScreen() {
             }
             onScroll={onScroll}
             scrollEventThrottle={16}
+            removeClippedSubviews
+            initialNumToRender={LIST_INITIAL_NUM}
+            maxToRenderPerBatch={LIST_MAX_BATCH}
+            windowSize={LIST_WINDOW_SIZE}
+            updateCellsBatchingPeriod={LIST_BATCH_INTERVAL}
           />
         </View>
 
@@ -672,6 +681,11 @@ export default function HomeScreen() {
             }
             onScroll={onLiveScroll}
             scrollEventThrottle={16}
+            removeClippedSubviews
+            initialNumToRender={LIST_INITIAL_NUM}
+            maxToRenderPerBatch={LIST_MAX_BATCH}
+            windowSize={LIST_WINDOW_SIZE}
+            updateCellsBatchingPeriod={LIST_BATCH_INTERVAL}
           />
         </View>
       </PagerView>
