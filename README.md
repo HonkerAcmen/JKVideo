@@ -79,7 +79,7 @@ adb devices           # 查看 Android 设备
 adb devices
 ```
 
-3. 运行：
+1. 运行：
 
 ```bash
 pnpm android
@@ -98,6 +98,130 @@ pnpm android
 > ```properties
 > sdk.dir=/Users/你的用户名/Library/Android/sdk
 > ```
+
+## iOS 运行说明
+
+### 虚拟机或本机模拟器运行
+
+适用于你自己的 macOS 环境或 macOS 虚拟机，直接在 iOS Simulator 中编译运行。
+
+#### 环境检查
+
+```bash
+xcode-select -p
+node -v
+npm -v
+```
+
+#### 安装依赖
+
+```bash
+cd /Users/feixue/Git_hub_Project/JKVideo
+npm install
+```
+
+#### 一键编译并启动 iOS 模拟器
+
+```bash
+npx expo run:ios
+```
+
+#### 先生成原生工程，再手动编译
+
+```bash
+npx expo prebuild -p ios
+npx pod-install ios
+open ios/JKVideo.xcworkspace
+```
+
+#### 指定模拟器型号运行
+
+```bash
+xcrun simctl list devices available
+npx expo run:ios --simulator "iPhone 16"
+```
+
+#### 清理后重新编译
+
+```bash
+rm -rf ios/build
+npx expo run:ios --clean
+```
+
+#### CocoaPods 缺失时
+
+```bash
+sudo gem install cocoapods
+npx pod-install ios
+```
+
+### iOS 真机本地运行命令表
+
+适用于你自己的 iPhone 本地调试。需要 macOS、Xcode、数据线，以及 Apple ID 登录 Xcode。
+
+#### 1. 安装依赖
+
+```bash
+cd /Users/feixue/Git_hub_Project/JKVideo
+npm install
+```
+
+#### 2. 生成 iOS 原生工程
+
+```bash
+npx expo prebuild -p ios
+npx pod-install ios
+```
+
+#### 3. 查看本机可用设备
+
+```bash
+xcrun xctrace list devices
+```
+
+#### 4. 直接命令行安装到真机
+
+```bash
+npx expo run:ios --device
+```
+
+如果有多台设备，可按设备名指定：
+
+```bash
+npx expo run:ios --device "你的 iPhone 名称"
+```
+
+#### 5. 使用 Xcode 本地运行
+
+```bash
+open ios/JKVideo.xcworkspace
+```
+
+然后在 Xcode 中完成以下操作：
+
+1. 选择你的 iPhone 作为运行目标。
+2. 在 `Signing & Capabilities` 中选择你的 Team。
+3. 首次运行时，如提示信任开发者证书，到手机中手动信任。
+4. 点击 Xcode 的 Run 按钮安装并启动。
+
+#### 6. 真机调试失败时常用命令
+
+```bash
+npx expo run:ios --device --clean
+```
+
+```bash
+cd ios
+pod install
+cd ..
+```
+
+#### 7. 真机运行前建议检查
+
+```bash
+xcodebuild -version
+xcrun devicectl list devices
+```
 
 ## Web 运行说明
 
@@ -126,6 +250,10 @@ utils/        工具函数（格式化、WBI、图片代理等）
 - Web 端必须先启动 `pnpm proxy`，否则部分接口会失败。
 - 点赞/评论/关注等写操作依赖完整登录态（`SESSDATA + bili_jct` 等）。
 - 当前仓库存在少量与下载相关的 TypeScript 历史报错，不影响你本次功能文档。
+
+## 致谢
+
+感谢JKVideo原项目
 
 ## License
 

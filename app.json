@@ -13,7 +13,9 @@
       "backgroundColor": "#00AEEC"
     },
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.jinsha.jkvideo",
+      "buildNumber": "1.0.10"
     },
     "android": {
       "adaptiveIcon": {
